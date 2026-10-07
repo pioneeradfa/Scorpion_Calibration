@@ -1,0 +1,86 @@
+{
+  "RF": {
+    "coxa": {
+      "pin": 29,
+      "angle": 98
+    },
+    "femur": {
+      "pin": 30,
+      "angle": 88
+    },
+    "tibia": {
+      "pin": 31,
+      "angle": 94
+    }
+  },
+  "RM": {
+    "coxa": {
+      "pin": 3,
+      "angle": 90
+    },
+    "femur": {
+      "pin": 4,
+      "angle": 92
+    },
+    "tibia": {
+      "pin": 5,
+      "angle": 84
+    }
+  },
+  "RR": {
+    "coxa": {
+      "pin": 9,
+      "angle": 103
+    },
+    "femur": {
+      "pin": 1,
+      "angle": 87
+    },
+    "tibia": {
+      "pin": 2,
+      "angle": 90
+    }
+  },
+  "LR": {
+    "coxa": {
+      "pin": 10,
+      "angle": 87
+    },
+    "femur": {
+      "pin": 11,
+      "angle": 90
+    },
+    "tibia": {
+      "pin": 12,
+      "angle": 91
+    }
+  },
+  "LM": {
+    "coxa": {
+      "pin": 13,
+      "angle": 90
+    },
+    "femur": {
+      "pin": 14,
+      "angle": 90
+    },
+    "tibia": {
+      "pin": 15,
+      "angle": 84
+    }
+  },
+  "LF": {
+    "coxa": {
+      "pin": 24,
+      "angle": 115
+    },
+    "femur": {
+      "pin": 23,
+      "angle": 93
+    },
+    "tibia": {
+      "pin": 22,
+      "angle": 101
+    }
+  }
+}
