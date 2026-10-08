@@ -4,10 +4,20 @@ Scorpion Hexapod - Inverse Kinematics (corrected for 270-degree servos).
 
 WHAT CHANGED FROM THE PREVIOUS VERSION
 --------------------------------------
-1. TIBIA_SIGN was -1.  Its own inline comment claimed "knee_angle below 180 ->
-   raw increases (up/curl)", but cal + (-1)*(180-knee) DECREASES as the knee
-   bends.  The documented convention (confirmed on hardware) is "increasing raw
-   tibia = curls up", so the sign is now +1.
+1. TIBIA_SIGN is -1, and it took three attempts to settle because no one had
+   touched a servo.  History: the original file shipped -1 with a comment that
+   described +1; the first correction flipped it to +1 to match that comment;
+   the hardware evidence then flipped it back to -1 for good.  The evidence is
+   the hand-calibrated STAND pose (POSITIONS["stand"] in the legacy driver,
+   RF raw 153.0/165.0/52.5 physical), which is the pose in the bench photo:
+   the calibration pose is the leg DEAD STRAIGHT, so a standing knee bend of
+   88.5 deg has to be reached by MOVING AWAY from cal_tibia = 141.0, and stand
+   sits 88.5 deg BELOW it.  A hinge only bends one way, therefore decreasing
+   raw tibia bends the knee and increasing it straightens the knee.  With +1
+   the same stand pose solves to a foot 146 mm ABOVE the body plane, and the
+   photo shows the knee servo as the highest joint on the leg with the body
+   deck ~70 mm up, matching the -1 solution (72.5 mm) to within measurement
+   error.  See RF_LEG_IK.md section 2 for the full table.
 
 2. All angles are TRUE PHYSICAL SHAFT DEGREES (0-270), not the legacy /180
    command units.  Pulse conversion lives in servo_lsc24.py.  Calibration
@@ -39,7 +49,8 @@ CONFIRMED GEOMETRY (mm)
 
 JOINT CONVENTIONS
     Femur: increasing raw angle lifts the leg up.          FEMUR_SIGN = +1
-    Tibia: increasing raw angle curls the leg up.          TIBIA_SIGN = +1
+    Tibia: increasing raw angle STRAIGHTENS the knee;
+           decreasing it curls the knee up under the body. TIBIA_SIGN = -1
     Coxa : increasing raw angle rotates CCW on every servo, which is FORWARD
            on right legs and BACKWARD on left legs.        COXA_SIGN R=+1 L=-1
 
@@ -99,7 +110,7 @@ MOUNT_POS: Dict[str, Tuple[float, float]] = {
 
 # Joint signs -- flip an individual entry only if a physical test contradicts it.
 FEMUR_SIGN = +1
-TIBIA_SIGN = +1        # was -1; see module docstring
+TIBIA_SIGN = -1        # hardware-settled: raw down = knee bends.  See docstring item 1.
 COXA_SIGN = {"R": +1, "L": -1}
 
 # The recorded calibration was captured through the legacy /180 pulse mapping,
@@ -157,11 +168,15 @@ CALIBRATION = load_calibration()
 def leg_reach_limits(leg: str) -> Tuple[float, float]:
     """(d_min, d_max) reachable from the femur pivot, limited by tibia travel.
 
-    The knee can only bend one way, and raw_tibia = cal_tibia + phi must stay
-    inside the servo's safe band, so phi_max = DEGREE_SAFE_MAX - cal_tibia.
+    The knee can only bend one way, and raw_tibia = cal_tibia + TIBIA_SIGN*phi
+    must stay inside the servo's safe band.  With TIBIA_SIGN = -1 that bounds
+    phi from above by cal_tibia - DEGREE_SAFE_MIN.
     """
     cal_t = CALIBRATION[leg]["tibia"]
-    phi_max = DEGREE_SAFE_MAX - cal_t
+    if TIBIA_SIGN > 0:
+        phi_max = DEGREE_SAFE_MAX - cal_t
+    else:
+        phi_max = cal_t - DEGREE_SAFE_MIN
     if phi_max <= 0:
         raise WorkspaceError(
             f"{leg}: calibrated tibia {cal_t:.1f} deg leaves no room to bend the knee"
@@ -432,17 +447,17 @@ def self_test(verbose: bool = True) -> bool:
     say(f"   foot raised 35mm -> femur delta {d_fem:+.2f} deg  (expect > 0: 'increase = lift up')")
     ok &= d_fem > 0
 
-    # curling the knee must raise the raw tibia angle.  Pull the foot inboard
-    # and up so d shrinks and the knee genuinely bends further.
+    # curling the knee must LOWER the raw tibia angle (TIBIA_SIGN = -1).
+    # Pull the foot inboard and up so d shrinks and the knee genuinely bends.
     curled = leg_ik(leg, 125.0, 0.0, -150.0)
     d_tib = curled[2] - base[2]
-    say(f"   knee bent further -> tibia delta {d_tib:+.2f} deg  (expect > 0: 'increase = curl up')")
-    ok &= d_tib > 0
+    say(f"   knee bent further -> tibia delta {d_tib:+.2f} deg  (expect < 0: 'increase = straighten')")
+    ok &= d_tib < 0
 
-    # The tibia must track the knee bend monotonically: raw_tibia = cal_tibia + phi,
+    # The tibia must track the knee bend monotonically: raw = cal + TIBIA_SIGN*phi,
     # and phi grows as the femur-pivot->foot distance d shrinks.  So the sign of
     # the tibia response to a lift depends on which way the lift moves d -- it is
-    # NOT always one direction, and asserting a fixed sign is how the previous
+    # NOT always one direction, and asserting a fixed sign is how the original
     # self-test came to pass with an inverted TIBIA_SIGN.
     def d_of(u, v, z):
         return math.hypot(math.hypot(u, v) - COXA_LEN, z)
@@ -459,21 +474,22 @@ def self_test(verbose: bool = True) -> bool:
         a1 = leg_ik(leg, cu, cv, z1)
         d0, d1 = d_of(cu, cv, z0), d_of(cu, cv, z1)
         got = a1[2] - a0[2]
-        want = -1.0 if d1 > d0 else +1.0     # d up -> straighter -> tibia down
+        want = TIBIA_SIGN * (-1.0 if d1 > d0 else +1.0)   # d up -> straighter
         good = (got > 0) == (want > 0)
         say(f"     d {d0:7.2f} -> {d1:7.2f}  tibia delta {got:+7.2f}  "
             f"expect sign {want:+.0f}  {'ok' if good else 'FAIL'}   [{why}]")
         ok &= good
 
-    # Regression guard for the exact case the old test got wrong.
+    # Regression guard for the exact case the original test got wrong.
     old_a = leg_ik(leg, 207.67, 0.0, 0.0)[2]
     old_b = leg_ik(leg, 207.67, 0.0, 20.0)[2]
     say(f"   regression guard (old lift test, RF at 207.67mm reach): tibia "
         f"{old_a:.2f} -> {old_b:.2f}, delta {old_b-old_a:+.2f}")
-    say("     the previous TIBIA_SIGN=-1 reported +1.36 here and the test asserted "
-        "'>0', so two bugs")
-    say("     cancelled into a green checkmark.  With TIBIA_SIGN=+1 it must be negative.")
-    ok &= (old_b - old_a) < 0
+    say("     history: the original test asserted '>0' under TIBIA_SIGN=-1 and")
+    say("     passed by coincidence; under +1 the truth is -1.36; under the now")
+    say("     hardware-settled -1 it is +1.36 again.  The oracle is the d-based")
+    say("     prediction above, not a memorised sign.")
+    ok &= (old_b - old_a) > 0 and abs((old_b - old_a) - 1.36) < 0.05
 
     # coxa mirror: on a right leg +v (forward) must increase raw coxa,
     # on a left leg it must decrease it.

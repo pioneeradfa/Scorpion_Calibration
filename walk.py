@@ -11,8 +11,12 @@ Typical order of use
   4. python3 walk.py --dry-run --cycles 1 compute a whole walk, send nothing
   5. python3 walk.py --identify           map channels to servos on the bench
   6. python3 walk.py --belly              robot propped up: fold to belly-down
-  7. python3 walk.py --stand              rise to the standing pose
-  8. python3 walk.py --walk 2             two gait cycles, then sit
+  7. python3 walk.py --user-stand         rise to your hand-calibrated stand pose
+  8. python3 walk.py --stand              rise to the gait stance (taller, narrower)
+  9. python3 walk.py --rf-cycle           RF ONLY: smooth swing/stance cycle,
+                                          other five legs hold -- the single-leg
+                                          bring-up step, see RF_LEG_IK.md
+ 10. python3 walk.py --walk 2             two gait cycles, then sit
 
 Steps 1-4 need no hardware and no ServoControl.py.  Steps 5-8 refuse to move
 without an explicit --yes (or an interactive confirmation), because the first
@@ -167,6 +171,48 @@ def cmd_stand(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_user_stand(a: argparse.Namespace) -> int:
+    if not confirm(a, "rise to YOUR hand-calibrated stand pose "
+                      "(POSITIONS['stand'] x1.5, the pose in the bench photo)"):
+        return 1
+    bus = ServoBus(dry_run=a.force_dry)
+    tripod_gait.user_stand(bus, a.duration)
+    print("standing in the hand-calibrated pose")
+    return 0
+
+
+def cmd_rf_cycle(a: argparse.Namespace) -> int:
+    stride = a.stride if a.stride is not None else 50.0
+    try:
+        segs = tripod_gait.rf_cycle_segments(
+            stride=stride,
+            lift=a.lift if a.lift is not None else 25.0,
+            cycle_ms=a.cycle if a.cycle is not None else 2000,
+            phases=a.phases if a.phases is not None else 16)
+    except ik_module.WorkspaceError as e:
+        print(f"refusing: {e}")
+        return 2
+    u, v0, z0 = tripod_gait.rf_stand_foot()
+    print(f"RF-only cycle centred on the hand-calibrated stand foot "
+          f"(u={u:.1f}, v={v0:+.1f}, z={z0:.1f} mm)")
+    print(f"  {len(segs)} segments of {segs[0][1]} ms;  joint ranges: "
+          f"{tripod_gait.rf_cycle_report(segs)}")
+    print("  only channels 1/2/3 move; the other five legs hold their pose")
+    if not confirm(a, f"run {a.cycles} RF-only cycle(s)"):
+        return 1
+    bus = ServoBus(dry_run=a.force_dry)
+    rf_ch = LEG_CHANNELS["RF"]
+    centre = dict(zip(rf_ch, tripod_gait.USER_STAND_PHYS["RF"]))
+    bus.send_pose(centre, 1500)                       # RF to stand centre
+    lead = dict(zip(rf_ch, ik_module.leg_ik("RF", u, v0 + stride / 2, z0)))
+    bus.send_pose(lead, 2 * segs[0][1])               # planted, to stance start
+    for _ in range(a.cycles):
+        for angles, seg_ms in segs:
+            bus.send_pose(dict(zip(rf_ch, angles)), seg_ms)
+    print("rf cycle done")
+    return 0
+
+
 def cmd_walk(a: argparse.Namespace) -> int:
     cfg = build_config(a)
     rep = tripod_gait.check_cycle(cfg)
@@ -217,7 +263,9 @@ def main(argv=None) -> int:
         ("--dry-run", "compute a walk, send nothing"),
         ("--identify", "sweep channels to map wiring"),
         ("--belly", "fold to belly-down"),
-        ("--stand", "rise to standing"),
+        ("--user-stand", "rise to your hand-calibrated stand pose"),
+        ("--stand", "rise to the gait standing pose"),
+        ("--rf-cycle", "RF leg only: one smooth cycle, other legs hold"),
         ("--walk", "run gait cycles then sit"),
         ("--demo", "belly -> rise -> walk -> sit"),
     ):
@@ -227,8 +275,8 @@ def main(argv=None) -> int:
         mode.add_argument(flag, action="store_const", dest="mode",
                           const=flag.lstrip("-").replace("-", "_"), help=help_text)
 
-    ap.add_argument("--cycles", type=int, default=2, help="gait cycles for --walk/--dry-run/--demo")
-    ap.add_argument("--duration", type=int, default=2500, help="ms for --belly/--stand")
+    ap.add_argument("--cycles", type=int, default=2, help="gait cycles for --walk/--dry-run/--demo/--rf-cycle")
+    ap.add_argument("--duration", type=int, default=2500, help="ms for --belly/--stand/--user-stand")
     ap.add_argument("--yes", "-y", action="store_true", help="skip the go confirmation")
     ap.add_argument("--force-dry", action="store_true", dest="force_dry",
                     help="never touch hardware even if ServoControl imports")
@@ -247,6 +295,7 @@ def main(argv=None) -> int:
         "self_test": cmd_self_test, "check": cmd_check, "trajectory": cmd_trajectory,
         "dry_run": cmd_dry_run, "identify": cmd_identify, "belly": cmd_belly,
         "stand": cmd_stand, "walk": cmd_walk, "demo": cmd_demo,
+        "user_stand": cmd_user_stand, "rf_cycle": cmd_rf_cycle,
     }
     return handlers[a.mode](a)
 

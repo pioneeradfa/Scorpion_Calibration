@@ -53,6 +53,8 @@ from ik_module import (
     WorkspaceError,
     all_legs_pose,
     femur_travel,
+    leg_fk,
+    leg_ik,
     leg_ik_body,
     leg_reach_limits,
 )
@@ -295,6 +297,89 @@ def calibration_pose() -> Dict[int, float]:
 def stand_pose(cfg: GaitConfig) -> Dict[int, float]:
     """Mid-stance standing pose: every foot planted at v = 0."""
     return all_legs_pose(solve_phase(0.25, cfg))   # 0.25 = middle of tripod A's stance
+
+
+# The hand-calibrated standing pose, in TRUE physical degrees.  This is
+# POSITIONS["stand"] from stand_sit_walk_tail_claw_belly.py (legacy /180 command
+# units) multiplied by LEGACY_CALIBRATION_SCALE, i.e. the pose the robot is
+# known to stand in on the bench -- see RF_LEG_IK.md.  It is the initial
+# posture before walking; the gait itself runs from the (taller, narrower)
+# stance in GaitConfig, reached by a short transition from here.
+USER_STAND_PHYS: Dict[str, Tuple[float, float, float]] = {
+    "RF": (153.0, 165.0, 52.5),   # legacy 102/110/35
+    "RM": (135.0, 165.0, 52.5),   # legacy  90/110/35
+    "RR": (154.5, 157.5, 52.5),   # legacy 103/105/35
+    "LF": (172.5, 165.0, 60.0),   # legacy 115/110/40
+    "LM": (135.0, 165.0, 30.0),   # legacy  90/110/20
+    "LR": (135.0, 165.0, 45.0),   # legacy  90/110/30
+}
+
+
+def user_stand_pose() -> Dict[int, float]:
+    """Channel map of USER_STAND_PHYS, ready for ServoBus.send_pose()."""
+    return all_legs_pose(USER_STAND_PHYS)
+
+
+def user_stand(bus: ServoBus, duration_ms: int = 2500) -> None:
+    """Rise into the hand-calibrated stand pose in one interpolated move."""
+    bus.send_pose(user_stand_pose(), duration_ms)
+
+
+# ============================================================
+# RF-ONLY CYCLE  (single-leg bring-up, see RF_LEG_IK.md section 4)
+# ============================================================
+def rf_stand_foot() -> Tuple[float, float, float]:
+    """Leg-local foot position (u, v, z) of the hand-calibrated RF stand pose."""
+    return leg_fk("RF", *USER_STAND_PHYS["RF"])
+
+
+def rf_cycle_segments(stride: float = 50.0, lift: float = 25.0,
+                      cycle_ms: int = 2000, phases: int = 16
+                      ) -> List[Tuple[Tuple[float, float, float], int]]:
+    """One smooth RF swing/stance cycle centred on the hand-calibrated foot.
+
+    Returns [((coxa, femur, tibia) physical degrees, segment ms), ...] for the
+    segment END points; the board interpolates each segment onboard, and
+    send_pose() pipelines them, so the motion is continuous.
+
+    Stance (s 0..0.5): foot planted at stand height, sweeps v +stride/2 ->
+    -stride/2, which is what advances the body.  Swing (s 0.5..1): smoothstep
+    forward with a sin(pi t) lift, both zero-velocity at touch-down and
+    lift-off.  s = 1 lands exactly on s = 0, so cycles chain.
+
+    Only the three RF channels change; the other five legs hold whatever pose
+    they are in.  Raises WorkspaceError if any segment leaves the safe band.
+    """
+    u, v0, z0 = rf_stand_foot()
+    seg_ms = cycle_ms // phases
+    need = tx_ms(3)
+    if seg_ms < need:
+        raise WorkspaceError(
+            f"rf cycle: {seg_ms} ms segments are shorter than the {need:.0f} ms "
+            f"a 3-servo frame needs at 9600 baud; use fewer --phases or a longer --cycle")
+
+    def foot_at(s: float) -> Tuple[float, float, float]:
+        if s <= 0.5:
+            t = s / 0.5
+            return u, v0 + stride / 2 * (1 - 2 * t), z0
+        t = (s - 0.5) / 0.5
+        e = t * t * (3 - 2 * t)
+        return u, v0 - stride / 2 + stride * e, z0 + lift * math.sin(math.pi * t)
+
+    out = []
+    for i in range(phases):
+        su, sv, sz = foot_at((i + 1) / phases)
+        angles = leg_ik("RF", su, sv, sz)          # raises if out of workspace
+        out.append((angles, seg_ms))
+    return out
+
+
+def rf_cycle_report(segments) -> str:
+    """Joint ranges over a segment list, for the bring-up printout."""
+    lo = [min(s[0][j] for s in segments) for j in range(3)]
+    hi = [max(s[0][j] for s in segments) for j in range(3)]
+    names = ("coxa", "femur", "tibia")
+    return ", ".join(f"{n} {l:.1f}..{h:.1f}" for n, l, h in zip(names, lo, hi))
 
 
 def belly_down(bus: ServoBus, duration_ms: int = 2500) -> None:

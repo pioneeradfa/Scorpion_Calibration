@@ -72,6 +72,22 @@ mapping, so they are multiplied by `LEGACY_CALIBRATION_SCALE = 1.5` on load:
 
 Once you re-calibrate with the corrected mapping in place, set the scale to 1.0.
 
+## 5b. Second reversal, now hardware-settled: TIBIA_SIGN = -1
+
+The first correction set TIBIA_SIGN = +1 because the old inline comment
+described +1.  The hand-calibrated STAND pose (POSITIONS["stand"], RF legacy
+102/110/35 = physical 153.0/165.0/52.5, the pose in the bench photo) then
+contradicted it: the calibration pose is the leg DEAD STRAIGHT, so a standing
+knee bend of 88.5 deg must lie on one side of cal_tibia = 141.0, and stand lies
+88.5 deg below it.  Under +1 the same pose solves to a foot 146 mm ABOVE the
+body plane; under -1 it solves to 72.5 mm below with the knee 35 mm above the
+coxa plane, which is what the photo shows.  A hinge only bends one way, so
+decreasing raw tibia bends the knee.  Flipped to -1 together with:
+leg_reach_limits() (phi_max = cal_tibia - 2 now), the self-test expectations
+(the d-based prediction is the oracle, not a memorised sign), WALKING_NOTES
+section 4 (planted 84.15 / lifted 58.11, delta -26.03), and a new
+RF_LEG_IK.md carrying the full derivation and the photo cross-check.
+
 ## 5. Corrections to the previous version of this file
 
 ### 5.1 `TIBIA_SIGN` was −1 and its comment described the opposite

@@ -1,7 +1,8 @@
 # RIGHT FRONT leg — geometry, calibrated stand pose, inverse kinematics
 
-**Phase: single-leg bring-up.** Nothing in this document moves a servo.
-Companion figure: [`rf_leg_diagram.png`](rf_leg_diagram.png).
+**Phase: single-leg bring-up.** Companion figure:
+[`rf_leg_diagram.png`](rf_leg_diagram.png).  The document itself moves nothing;
+the commands in §4 do, and only after an explicit confirmation.
 Scope note: tail and claw are out of scope; only RF (channels 1/2/3) is considered here.
 
 ---
@@ -83,11 +84,14 @@ So, in plain language, for this robot:
 * **tibia: increasing raw angle STRAIGHTENS the knee; decreasing it CURLS the knee.**
   In formula form `phi = −1 × (raw_tibia − cal_tibia)`, i.e. **`TIBIA_SIGN = −1`**.
 
-`ik_module.py` currently ships `TIBIA_SIGN = +1`. **That must be flipped before
-any gait runs**, together with the expected tibia direction in
-`WALKING_NOTES.md` §4. Consequence for reach limits: with `TIBIA_SIGN = −1` the
-RF knee can bend up to `cal_tibia − 2 = 139°`, so RF's d floor becomes
-**92.2 mm** (it was 105.24 mm under the wrong sign) — more margin, not less.
+`ik_module.py` now ships `TIBIA_SIGN = -1` (flipped in the same commit as this
+document), and `WALKING_NOTES.md` §4 carries the matching expectation: on a
+lift, the raw tibia angle must FALL. Consequence for reach limits: with
+`TIBIA_SIGN = −1` the RF knee can bend up to `cal_tibia − 2 = 139°`, so RF's
+d floor becomes **92.2 mm** (it was 105.24 mm under the wrong sign) — more
+margin, not less. Per-leg floors now: RF 92.2, RM/LM 108.6, RR 98.6, LR 97.0,
+LF 81.8; the six-leg `--check` verdict stays FEASIBLE with the tightest margin
+41.1° on RM (it was 33.6° on LF).
 
 ### 30-second confirmation on the bench (do this before walking)
 
@@ -161,9 +165,20 @@ u = horiz·cos(yaw)   v = horiz·sin(yaw)   yaw = coxa_raw − 147.0
 
 ## 4. STAND as the initial posture, and one smooth RF cycle around it
 
-`walk.py` should first drive RF to **raw 153.0 / 165.0 / 52.5** (2 s ramp), and
-treat foot (191.5, +20.1, −72.5) as the cycle centre. One 2000 ms cycle,
-stride 50 mm, lift 25 mm (figure, bottom panel):
+Implemented in this commit: `walk.py --user-stand` drives all six legs to the
+hand-calibrated table (RF = raw 153.0 / 165.0 / 52.5) in one onboard-interpolated
+move, and `walk.py --rf-cycle` runs the cycle below on **channels 1/2/3 only**,
+the other five legs holding their pose — the single-leg bring-up step.
+
+```bash
+python3 walk.py --user-stand --force-dry    # pace it, send nothing
+python3 walk.py --rf-cycle --force-dry      # RF cycle, send nothing
+python3 walk.py --user-stand                # for real, robot propped
+python3 walk.py --rf-cycle --cycles 2       # watch RF swing/stance twice
+```
+
+`--rf-cycle` treats the stand foot (191.5, +20.1, −72.5) as the cycle centre.
+One 2000 ms cycle, stride 50 mm, lift 25 mm (figure, bottom panel):
 
 | phase | foot | joints |
 |---|---|---|
@@ -194,7 +209,9 @@ walking stance → gait.
 
 ## 5. Open points (all RF-only, all cheap to settle)
 
-1. **Tibia jiggle test** (§2) — decides `TIBIA_SIGN`. Everything else waits on it.
+1. **Tibia jiggle test** (§2) — the code now ships `TIBIA_SIGN = -1` on the
+   strength of the stand-table + photo evidence; the jiggle is the physical
+   confirmation. If it disagrees, flip the constant back and re-derive.
 2. **The sit row does not compute as a sit.** Under the confirmed convention it
    puts the body 129.8 mm up (higher than stand's 72.5 mm) with the leg at 91 %
    of stretch. A sit should be lower and more folded. Was the robot propped or
@@ -205,3 +222,24 @@ walking stance → gait.
    but worth knowing whether "straight out" is 153 or 147 for this leg.
 4. LF/RM/RR/LM/LR rows of the same table have not been checked yet. They will
    be, one leg at a time, after RF walks.
+
+---
+
+## 6. Reconciliation with `skills.md`
+
+`skills.md` (uploaded to the branch) agrees with this document on everything
+measured: link lengths, mount positions, body frame, coxa pointing straight
+out, and the calibration pose description (belly down, leg dead straight).
+Four of its claims predate the 270-degree servo correction and are superseded:
+
+| skills.md says | status | why |
+|---|---|---|
+| servo pins 29/30/31 for RF | **superseded** | a 24-channel board has no channels 29-31; the contiguous 1-based map puts RF on 1/2/3 (`servo_lsc24.py`). `--identify` settles the physical wiring |
+| "0°-180° mechanical range", safe band 15-165° | **superseded** | HPS-2027 is 500-2500 µs = 0-270°. The 0-180 assumption is exactly the legacy `/180` bug; the safe band here is 2-268° physical |
+| "Tibia: increasing raw angle curls up" | **contradicted** | incompatible with skills.md's own calibration description: cal = leg straight, and the stand pose (which skills.md does not contain) sits 88.5° BELOW cal tibia with the knee bent 88.5°. A hinge bends one way, so raw down = bend. See §2 |
+| safe plateau u = 220-255 mm, stance u = 230 / z = −35 | **artifact of the 180° clamp** | with the true 270° travel the knee bends to 139°, opening d down to 92 mm; and the bench photo shows the real stand at u = 191.5 / z = −72.5 with a 91.5° knee, not a near-straight leg at 35 mm body height |
+
+Everything else in skills.md (sections 1-4, and the plan to validate RF alone
+before combining legs) matches how this branch works. Its `rf_leg_gait.py`
+self-test is not in the repository; the equivalent here is
+`walk.py --self-test` plus `walk.py --rf-cycle --force-dry`.

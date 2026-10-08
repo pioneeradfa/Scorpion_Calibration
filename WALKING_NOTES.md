@@ -82,7 +82,12 @@ Expected angles and what each one should do:
 |---|---|---|---|---|---|
 | coxa | 1 | 147.00 | 147.00 | +0.00 | not move — the foot went straight up |
 | femur | 2 | 108.12 | 131.70 | **+23.59** | raise the leg. If it drops → flip `FEMUR_SIGN` |
-| tibia | 3 | 197.85 | 223.89 | **+26.03** | curl the knee. If it straightens → flip `TIBIA_SIGN` |
+| tibia | 3 | 84.15 | 58.11 | **−26.03** | curl the knee, i.e. the raw angle must FALL. If it rises → flip `TIBIA_SIGN` |
+
+The tibia row is the one the hand-calibrated stand pose settled: the calibration
+pose is the leg dead straight, stand sits 88.5° below the calibrated tibia, and
+a hinge only bends one way — so bending the knee must decrease the raw angle.
+See `RF_LEG_IK.md` §2.
 
 Then the coxa direction, foot swept 25 mm forward:
 
@@ -100,9 +105,21 @@ Sign constants are at the top of `ik_module.py`. Flip one, re-run
 
 ## 5. First motion
 
+Single leg first, exactly as `RF_LEG_IK.md` describes — prop the robot so only
+RF is free:
+
+```bash
+python3 walk.py --user-stand --force-dry   # feel the pace, send nothing
+python3 walk.py --rf-cycle --force-dry     # RF swing/stance cycle, nothing sent
+python3 walk.py --user-stand               # rise to your hand-calibrated pose
+python3 walk.py --rf-cycle 2               # two smooth RF cycles, legs 2-6 hold
+```
+
+Then, once RF has been watched through a cycle and nothing grinds:
+
 ```bash
 python3 walk.py --belly      # fold out to the calibration pose, 2.5s
-python3 walk.py --stand      # rise to standing, 3s
+python3 walk.py --stand      # rise to the gait stance, 3s
 python3 walk.py --walk 1     # one gait cycle = 50mm forward, then sits down
 python3 walk.py --demo       # belly -> rise -> walk -> sit, one command
 ```
