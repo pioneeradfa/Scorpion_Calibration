@@ -18,6 +18,23 @@ Scope note: tail and claw are out of scope; only RF (channels 1/2/3) is consider
 | tibia + foot | **130.59 mm** | knee pitch → foot tip |
 | RF coxa mount (body frame) | x = +115, y = −60 | x forward, y left, z up; origin body centre |
 | RF coxa zero direction | straight outboard (−Y) | yaw measured from there |
+
+### Body plate as-built (CAD photo, this branch's `uploads/` WhatsApp 17.42.33)
+
+| dimension | as-built | nominal | dev |
+|---|---|---|---|
+| column gap front-mid, side A / B | 115.28 / 115.05 | 115.00 | +0.28 / +0.05 |
+| column gap mid-rear, side A / B | 115.04 / 114.97 | 115.00 | +0.04 / −0.03 |
+| lateral gap front / mid / rear | 119.96 / 120.03 / 120.12 | 120.00 | −0.04 / +0.03 / +0.12 |
+| long diagonals | 259.92 / 259.26 | 259.42 | +0.50 / −0.16 |
+
+Worst case 0.28 mm of column error and 0.66 mm of diagonal skew over 260 mm
+(0.15° of plate rotation). Propagated through the IK at the stand foot, a
+0.3 mm mount error moves a solved joint angle by at most **0.26°** — under the
+servo's own 0.3° accuracy and 1/58 of a horn tooth. **The nominal ±115 / ±60
+map in `ik_module.MOUNT_POS` therefore stands unchanged**; there is nothing to
+trim until a square-check on the robot shows a bias larger than the servo
+noise.
 | hip→foot straight stretch | 64.5 + 130.59 = **195.09 mm** | d max |
 | yaw axis→foot full reach | 64.5 + 195.09 = **259.59 mm** | leg perfectly straight |
 | knee fully folded | \|130.59 − 64.5\| = **66.09 mm** | d min at zero knee travel |

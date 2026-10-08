@@ -99,6 +99,10 @@ PLANAR_MIN = abs(TIBIA_LEN - FEMUR_LEN)      #  66.09 mm, fully folded
 FULL_REACH = COXA_LEN + PLANAR_MAX           # 259.59 mm, coxa axis -> foot
 
 # Body frame: +X forward, +Y left, +Z up, origin at body centre at coxa height.
+# Nominal values, confirmed against the body-plate CAD photo: as-built column
+# gaps 114.97-115.28 and lateral gaps 119.96-120.12, i.e. within 0.28 mm of
+# nominal, which moves a solved joint angle by at most 0.26 deg -- inside the
+# servo's own 0.3 deg accuracy.  See RF_LEG_IK.md section 1 for the full table.
 MOUNT_POS: Dict[str, Tuple[float, float]] = {
     "RF": (ROW_SPACING,  -HALF_WIDTH),
     "RM": (0.0,          -HALF_WIDTH),
