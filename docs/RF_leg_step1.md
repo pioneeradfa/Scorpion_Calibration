@@ -58,7 +58,7 @@ Target: foot at body position `(x, y, z)`.
 
 **A. Body → leg frame**
 ```
-v = x − 115            u = −(y − (−60)) = 60 − y        z = z
+v = x − 115            u = −(y + 60) = −y − 60      z = z
 ```
 **B. Coxa yaw**
 ```
