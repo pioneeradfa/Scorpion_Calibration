@@ -43,7 +43,9 @@ WHAT CHANGED FROM THE PREVIOUS VERSION
    independently from the geometry.
 
 CONFIRMED GEOMETRY (mm)
-    coxa 64.5   femur 64.5   tibia 130.59
+    coxa 64.25  femur 64.25  tibia 135.60
+    (pivot-to-tip lengths from the annotated bench photo, 2026-10-10;
+     they supersede the earlier 64.5 / 64.5 / 130.59 set)
     coxa axes +/-60mm from the centreline, rows at x = +115 / 0 / -115
     all six coxa axes point straight out (90 deg), no radial splay
 
@@ -87,16 +89,16 @@ from servo_lsc24 import (
 # ============================================================
 # MEASURED GEOMETRY
 # ============================================================
-COXA_LEN = 64.5     # mm
-FEMUR_LEN = 64.5    # mm
-TIBIA_LEN = 130.59  # mm
+COXA_LEN = 64.25    # mm  yaw axis -> hip pivot
+FEMUR_LEN = 64.25   # mm  hip pivot -> knee pivot
+TIBIA_LEN = 135.60  # mm  knee pivot -> foot tip
 
 HALF_WIDTH = 120 / 2.0     # 60mm, right/left coxa-axis offset from centreline
 ROW_SPACING = 115.0        # mm between front/mid/rear coxa axes
 
-PLANAR_MAX = FEMUR_LEN + TIBIA_LEN           # 195.09 mm, femur pivot -> foot
-PLANAR_MIN = abs(TIBIA_LEN - FEMUR_LEN)      #  66.09 mm, fully folded
-FULL_REACH = COXA_LEN + PLANAR_MAX           # 259.59 mm, coxa axis -> foot
+PLANAR_MAX = FEMUR_LEN + TIBIA_LEN           # 199.85 mm, femur pivot -> foot
+PLANAR_MIN = abs(TIBIA_LEN - FEMUR_LEN)      #  71.35 mm, fully folded
+FULL_REACH = COXA_LEN + PLANAR_MAX           # 264.10 mm, coxa axis -> foot
 
 # Body frame: +X forward, +Y left, +Z up, origin at body centre at coxa height.
 # Nominal values, confirmed against the body-plate CAD photo: as-built column
@@ -490,10 +492,11 @@ def self_test(verbose: bool = True) -> bool:
     say(f"   regression guard (old lift test, RF at 207.67mm reach): tibia "
         f"{old_a:.2f} -> {old_b:.2f}, delta {old_b-old_a:+.2f}")
     say("     history: the original test asserted '>0' under TIBIA_SIGN=-1 and")
-    say("     passed by coincidence; under +1 the truth is -1.36; under the now")
-    say("     hardware-settled -1 it is +1.36 again.  The oracle is the d-based")
-    say("     prediction above, not a memorised sign.")
-    ok &= (old_b - old_a) > 0 and abs((old_b - old_a) - 1.36) < 0.05
+    say("     passed by coincidence; under +1 the truth is negative; under the")
+    say("     hardware-settled -1 it is +1.31 with the 135.60 mm tibia (it was")
+    say("     +1.36 with the old 130.59).  The oracle is the d-based prediction")
+    say("     above, not a memorised sign.")
+    ok &= (old_b - old_a) > 0 and abs((old_b - old_a) - 1.31) < 0.05
 
     # coxa mirror: on a right leg +v (forward) must increase raw coxa,
     # on a left leg it must decrease it.

@@ -10,9 +10,9 @@ since been shown to be wrong. Corrections are called out explicitly in
 
 ## 1. Confirmed geometry (mm)
 
-- Coxa link: **64.5**
-- Femur link: **64.5**
-- Tibia link: **130.59**
+- Coxa link: **64.25**
+- Femur link: **64.25**
+- Tibia link: **135.60**  (annotated bench photo 2026-10-10; supersedes 64.5/64.5/130.59)
 - Right/left coxa-axis spacing: **120** (±60 from the centreline)
 - Front/mid/rear coxa-axis spacing: **115** each → rows at x = +115 / 0 / −115
 - Mount angle: all six coxa axes point straight out (90°), no radial splay
@@ -23,9 +23,9 @@ Derived:
 
 | quantity | value |
 |---|---|
-| planar max (femur pivot → foot, leg straight) | 195.09 mm |
-| planar min (fully folded) | 66.09 mm |
-| full reach (coxa axis → foot, leg straight and level) | 259.59 mm |
+| planar max (femur pivot → foot, leg straight) | 199.85 mm |
+| planar min (fully folded) | 71.35 mm |
+| full reach (coxa axis → foot, leg straight and level) | 264.10 mm |
 
 ## 2. Hardware
 
@@ -80,12 +80,12 @@ described +1.  The hand-calibrated STAND pose (POSITIONS["stand"], RF legacy
 contradicted it: the calibration pose is the leg DEAD STRAIGHT, so a standing
 knee bend of 88.5 deg must lie on one side of cal_tibia = 141.0, and stand lies
 88.5 deg below it.  Under +1 the same pose solves to a foot 146 mm ABOVE the
-body plane; under -1 it solves to 72.5 mm below with the knee 35 mm above the
+body plane; under -1 it solves to 76.8 mm below with the knee 35 mm above the
 coxa plane, which is what the photo shows.  A hinge only bends one way, so
 decreasing raw tibia bends the knee.  Flipped to -1 together with:
 leg_reach_limits() (phi_max = cal_tibia - 2 now), the self-test expectations
 (the d-based prediction is the oracle, not a memorised sign), WALKING_NOTES
-section 4 (planted 84.15 / lifted 58.11, delta -26.03), and a new
+section 4 (planted 78.14 / lifted 53.71, delta -24.43), and a new
 RF_LEG_IK.md carrying the full derivation and the photo cross-check.
 
 ## 5. Corrections to the previous version of this file
@@ -196,7 +196,7 @@ left undone; the current focus is six-leg walking.
 
 Verified by math, `python3 walk.py --self-test` passes:
 
-- FK at the calibrated angles returns u = 259.59, v = 0, z = 0 for all six legs
+- FK at the calibrated angles returns u = 264.10, v = 0, z = 0 for all six legs
 - IK→FK round trip to 0.000000 mm across 47 bent-knee poses
 - 1 out-of-band target correctly rejected rather than clamped
 - joint-direction assertions including the old lift-test regression guard

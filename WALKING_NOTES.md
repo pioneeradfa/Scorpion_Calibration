@@ -81,8 +81,8 @@ Expected angles and what each one should do:
 | joint | ch | planted | lifted | Δ | must |
 |---|---|---|---|---|---|
 | coxa | 1 | 147.00 | 147.00 | +0.00 | not move — the foot went straight up |
-| femur | 2 | 108.12 | 131.70 | **+23.59** | raise the leg. If it drops → flip `FEMUR_SIGN` |
-| tibia | 3 | 84.15 | 58.11 | **−26.03** | curl the knee, i.e. the raw angle must FALL. If it rises → flip `TIBIA_SIGN` |
+| femur | 2 | 113.11 | 136.13 | **+23.03** | raise the leg. If it drops → flip `FEMUR_SIGN` |
+| tibia | 3 | 78.14 | 53.71 | **−24.43** | curl the knee, i.e. the raw angle must FALL. If it rises → flip `TIBIA_SIGN` |
 
 The tibia row is the one the hand-calibrated stand pose settled: the calibration
 pose is the leg dead straight, stand sits 88.5° below the calibrated tibia, and
@@ -138,9 +138,9 @@ lift         25 mm    peak foot clearance
 cycle      2000 ms    in 16 segments of 125 ms
 ```
 
-Foot 144.5 mm outboard of each coxa axis → **409 mm stance width** on a 230 mm
-body. Knee works between 78% and 90% of full stretch. Tightest servo margin
-anywhere in the cycle is **33.6° on LF**. Peak femur torque **11.5 kg·cm = 58%**
+Foot 144.2 mm outboard of each coxa axis → **408 mm stance width** on a 230 mm
+body. Knee works between 76% and 88% of full stretch. Tightest servo margin
+anywhere in the cycle is **36.6° on RM**. Peak femur torque **11.5 kg·cm = 58%**
 of the 20 kg·cm stall figure at an assumed 3.0 kg and ×1.4 dynamic.
 
 These came from a constrained scan that maximised the tightest margin across all
@@ -166,10 +166,11 @@ Knobs and what they do:
 | `--stride` ↓ | smaller coxa sweep | less distance per cycle |
 | `--lift` ↓ | less tibia excursion at peak swing | poorer ground clearance |
 
-LF is always the binding leg — its calibrated tibia (151.5°) sits 25.5° further
-round than RM/LM's (126.0°), giving it the highest reach floor. If you want more
-headroom, re-seat LF's tibia horn one tooth (14.4° on a 25T spline) and
-re-calibrate that leg; it would lift the tightest margin from 33.6° to about 48°.
+Reach floors differ per leg because the calibrated tibias differ: RM/LM bind at
+113.0 mm (their cal_t = 126.0 leaves the least bend room under TIBIA_SIGN = −1),
+LF is now the freest at 86.6 mm. The tightest margin in the cycle sits on RM at
+mid-stance (36.6°); if you want more headroom there, raise the body a little or
+shorten the stride rather than re-seating horns.
 
 Torque reference at 3.0 kg, tripod, ×1.4 dynamic:
 

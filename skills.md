@@ -22,10 +22,14 @@ inside a safe angle range.
 
 | Link | Length |
 |---|---|
-| Coxa | 64.5 mm |
-| Femur | 64.5 mm |
-| Tibia | 130.59 mm |
-| Max straight-line reach (coxa+femur+tibia) | 259.59 mm |
+| Coxa (L1) | 64.25 mm |
+| Femur (L2) | 64.25 mm |
+| Tibia (L3) | 135.60 mm |
+| Max straight-line reach (coxa+femur+tibia) | 264.10 mm |
+
+Updated 2026-10-10 from the annotated bench photo (pivot-to-pivot dashed lines):
+L1 64.25, L2 64.25, L3 135.60 mm, superseding the earlier 64.5 / 64.5 / 130.59.
+ik_module.py, RF_LEG_IK.md and WALKING_NOTES.md carry the same values.
 
 Note: tibia is ~2x the femur length. This is an unusual ratio for a hexapod leg
 and is the reason the safe operating envelope (section 5) sits toward the
@@ -122,23 +126,26 @@ Measured by tape on the physical robot while standing, with a sketch:
 
 ### Reconciliation against the IK (see RF_LEG_IK.md section 7 for the solves)
 
-* 6.8 cm matches the coxa link (64.5 mm) and 5.35 cm matches the computed
-  knee-to-hip horizontal at the stand pose (54.1 mm). Both confirm the model.
+* 6.8 cm matches the coxa link (64.25 mm) and 5.35 cm matches the computed
+  knee-to-hip horizontal at the stand pose (53.9 mm). Both confirm the model.
 * **13 cm cannot be yaw-axis -> foot at the stand pose.** Solving the linkage
   for u = 130, z = -65 forces the knee to 138.9 deg of bend, i.e. raw tibia
   2.1 deg - the mechanical stop - and raw femur 198.8, some 34-50 deg away from
   the commanded stand values (165.0 / 52.5). The stand photo does not show a
   pinned tibia, so this reading is a labelling error, not a model error.
-* **13 cm hip-pivot -> foot closes the loop:** u = 64.5 + 130 = 194.5 mm against
-  the IK's 192.6 mm (+1.9 mm), and the solved joints come out within 1-4 deg of
-  the commanded stand table. At the stand pose the yaw-axis -> foot horizontal
-  is ~19.3-19.5 cm, not 13.
+* **13 cm hip-pivot -> foot closes the loop:** u = 64.25 + 130 = 194.25 mm
+  against the IK's 193.9 mm (+0.35 mm). With the 135.60 mm tibia the solved
+  joints at the computed clearance (76.8 mm) come out within 0.6 deg of the
+  commanded stand table - the tightest agreement of any measurement so far.
+  At the stand pose the yaw-axis -> foot horizontal is ~19.4 cm, not 13.
 * Clearance: tape 6.5 cm vs 7.25 cm computed. The 7 mm gap is most likely the
   reference point (deck underside / servo centreline vs the coxa shaft axis) or
   tape sag; it shifts the solved femur by ~4 deg, so it is worth one careful
   re-measure against the coxa shaft itself.
 
-Status: measurements recorded as above; the IK constants are UNCHANGED by them
-(every admitted reading agrees with the model within tape error). Open item:
+Status: measurements recorded as above. The 2026-10-10 dimension update moved
+the computed stand clearance to 76.8 mm, so the tape's 65 mm is now an 11.8 mm
+open question: either a reference-point error (deck underside / servo
+centreline) or ~12 mm of loaded sag below the commanded pose. Open item:
 re-measure (a) yaw axis -> foot, (b) hip bolt -> foot, (c) coxa shaft -> ground,
-with the robot commanded to stand and settled, to close the 7 mm question.
+with the robot commanded to stand and settled.
