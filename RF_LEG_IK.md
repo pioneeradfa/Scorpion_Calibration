@@ -74,9 +74,9 @@ why they are used to settle the joint conventions below.
 | knee bend / interior angle | **88.5° / 91.5°** |
 | tibia angle from horizontal | −55.5° |
 | knee height above coxa plane | **+35.1 mm** (knee is the highest point — matches photo) |
-| foot, leg-local | u = 191.5 outboard, v = +20.1 forward, z = −72.5 |
+| foot, leg-local | u = 191.5 outboard, v = +20.1 forward, z = −72.5 (tape: 130 mm outboard of the HIP pivot = u 194.5, §7) |
 | foot, body frame | (x, y) = (+135, −252) |
-| **body height at stand** | **72.5 mm** (photo deck ≈ 70 mm above the table — agrees) |
+| **body height at stand** | **72.5 mm** computed; bench tape 65 mm (see §7: reference-point question, open) |
 | stance width (foot to foot) | 503 mm |
 | d (hip→foot) | 147.2 mm = **75 % of stretch** — comfortable mid-workspace |
 
@@ -260,3 +260,47 @@ Everything else in skills.md (sections 1-4, and the plan to validate RF alone
 before combining legs) matches how this branch works. Its `rf_leg_gait.py`
 self-test is not in the repository; the equivalent here is
 `walk.py --self-test` plus `walk.py --rf-cycle --force-dry`.
+
+---
+
+## 7. Tape-measure cross-check (2026-10-09) — and why "13 cm" needs a reference point
+
+Bench tape: clearance 6.5 cm; "ground coxa axis to foot" 13 cm; sketch segments
+5.35 cm (knee→hip) and 6.8 cm (hip→coxa axis). Two of those confirm the model
+outright: 6.8 cm is the coxa link (64.5 mm) and 5.35 cm is the computed
+knee-to-hip horizontal at stand (54.1 mm).
+
+The 13 cm does not, read literally. Solving the linkage for each possible
+reading, against the commanded stand raws (165.0 femur / 52.5 tibia):
+
+| reading of "13 cm" | L | z | solved elev / phi | raw femur (dev) | raw tibia (dev) | verdict |
+|---|---|---|---|---|---|---|
+| yaw axis → foot | 65.5 | −65 | +66.8 / 138.9 | 198.8 (+33.8) | 2.1 (−50.4) | **impossible**: tibia at its mechanical stop, knee pinned; photo disagrees |
+| hip pivot → foot | 130.0 | −65 | +37.4 / 90.3 | 169.4 (+4.4) | 50.7 (−1.8) | consistent within tape error |
+| hip pivot → foot, z = −72.5 | 130.0 | −72.5 | +32.0 / 86.8 | 164.0 (−1.0) | 54.2 (+1.7) | **best fit: ~1-2° from the table** |
+
+So the stand pose puts the foot **192.6-194.5 mm outboard of the yaw axis**
+(13 cm outboard of the *hip pivot*), and the "13 cm" span in the sketch starts
+at the hip bolt. At stand, yaw-axis→foot is ~19.4 cm — worth knowing before
+anyone measures "reach" again.
+
+The remaining 7 mm on clearance (tape 65 vs computed 72.5) moves the solved
+femur by ~4°, so it is tape/reference-point noise until re-measured against the
+coxa shaft itself; it does not justify touching any constant. Note what it does
+NOT affect: femur torque depends on L (hip→foot horizontal), and both admitted
+readings put L at 128-130 mm, i.e. the §4 torque caution stands as written.
+
+Bench re-measure snippet — paste any (horizontal-from-hip, clearance) pair and
+compare against the commanded table:
+
+```python
+import math
+F, T, C = 64.5, 130.59, 64.5          # femur, tibia, coxa
+def tape_check(L, clearance):
+    d = math.hypot(L, -clearance)
+    alpha = math.degrees(math.atan2(-clearance, L))
+    beta  = math.degrees(math.acos((F*F + d*d - T*T) / (2*F*d)))
+    gamma = math.degrees(math.acos((F*F + T*T - d*d) / (2*F*T)))
+    return 132.0 + alpha + beta, 141.0 - (180.0 - gamma)   # raw femur, raw tibia
+print(tape_check(130.0, 65.0))    # -> (169.4, 50.7)  vs stand table (165.0, 52.5)
+```

@@ -106,3 +106,39 @@ band, confirmed by direct computation (see `rf_leg_gait.py` self-test).
   smooth before combining legs).
 - Actual body translation — RF stepping alone does not move the robot; it
   only exercises the leg's swing/stance cycle for visual confirmation.
+
+---
+
+## 8. Bench tape measurements of the standing pose (2026-10-09)
+
+Measured by tape on the physical robot while standing, with a sketch:
+
+| quantity | measured |
+|---|---|
+| ground clearance (coxa axis height above ground) | 6.5 cm |
+| horizontal, ground coxa axis -> foot point | 13 cm |
+| horizontal, knee -> hip pivot (sketch) | 5.35 cm |
+| horizontal, hip pivot -> coxa axis (sketch) | 6.8 cm |
+
+### Reconciliation against the IK (see RF_LEG_IK.md section 7 for the solves)
+
+* 6.8 cm matches the coxa link (64.5 mm) and 5.35 cm matches the computed
+  knee-to-hip horizontal at the stand pose (54.1 mm). Both confirm the model.
+* **13 cm cannot be yaw-axis -> foot at the stand pose.** Solving the linkage
+  for u = 130, z = -65 forces the knee to 138.9 deg of bend, i.e. raw tibia
+  2.1 deg - the mechanical stop - and raw femur 198.8, some 34-50 deg away from
+  the commanded stand values (165.0 / 52.5). The stand photo does not show a
+  pinned tibia, so this reading is a labelling error, not a model error.
+* **13 cm hip-pivot -> foot closes the loop:** u = 64.5 + 130 = 194.5 mm against
+  the IK's 192.6 mm (+1.9 mm), and the solved joints come out within 1-4 deg of
+  the commanded stand table. At the stand pose the yaw-axis -> foot horizontal
+  is ~19.3-19.5 cm, not 13.
+* Clearance: tape 6.5 cm vs 7.25 cm computed. The 7 mm gap is most likely the
+  reference point (deck underside / servo centreline vs the coxa shaft axis) or
+  tape sag; it shifts the solved femur by ~4 deg, so it is worth one careful
+  re-measure against the coxa shaft itself.
+
+Status: measurements recorded as above; the IK constants are UNCHANGED by them
+(every admitted reading agrees with the model within tape error). Open item:
+re-measure (a) yaw axis -> foot, (b) hip bolt -> foot, (c) coxa shaft -> ground,
+with the robot commanded to stand and settled, to close the 7 mm question.
