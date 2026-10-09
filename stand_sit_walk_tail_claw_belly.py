@@ -1,3 +1,39 @@
+"""LEGACY FILE - kept for the tail and claw routines only.  See the warning below.
+
+WARNING: DO NOT MIX THIS FILE WITH servo_lsc24.py / ik_module.py / tripod_gait.py
+
+This file has its own angle_to_pulse() using the legacy mapping
+
+    pulse = 500 + (angle / 180.0) * 2000
+
+which was copied from Hiwonder's ServoControl.py and is correct for their 180
+degree servo (HPS-2018) but WRONG for the HPS-2027 fitted to this robot, whose
+datasheet says 500-2500us spans 0-270 degrees.  Every angle in this file
+therefore drives the shaft 1.5x further than the number suggests.
+
+All of POSITIONS, TAIL_POSES and CLAW_POSES below were tuned by trial and error
+THROUGH that mapping, so the numbers are correct as-is for this file and only
+this file.  A stored "90" means 135 physical degrees here and 90 physical
+degrees in the new stack.  They are not interchangeable.
+
+Migrating the tail and claw means changing the mapping AND multiplying every
+stored angle by 1.5, then re-verifying each pose on hardware - any that already
+sat against a mechanical stop would then be commanded past it.  Deliberately not
+done; the current work is six-leg walking, in tripod_gait.py.
+
+Known bugs in this file, left alone on purpose:
+  - caterpillar_walk() and tripod_walk() never update `base`, so the feet return
+    to the same absolute position every cycle and the robot walks in place.  They
+    also apply `coxa += forward` to both sides, but increasing raw coxa is
+    forward on a right leg and backward on a left leg, so the body twists.
+    Both are superseded by tripod_gait.py.
+  - move_leg() sends one frame per servo: 18 frames, 169ms at 9600 baud.
+  - move_smooth() steps in Python, 21 frames per servo.  Never port it.
+  - menu_mode() maps 'c' twice, so claws_close() is unreachable there.
+  - keyboard_mode() calls stand() immediately at launch with no arming step.
+  - channel numbers 24, 25, 28, 29, 30, 31 do not exist on a 24-channel board.
+"""
+
 import ServoControl
 from time import sleep
 import sys

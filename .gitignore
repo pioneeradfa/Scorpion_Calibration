@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.idea/
+.vscode/
+
+# NOTE: ServoControl.py (Hiwonder's LSC-24 driver) and any calibration JSON are
+# deliberately NOT ignored.  Both are currently missing from this repo and both
+# are needed for a fresh clone to run - commit them.
