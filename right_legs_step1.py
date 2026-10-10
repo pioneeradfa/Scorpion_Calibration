@@ -274,7 +274,7 @@ def write_doc(path):
     L.append("Files: `right_legs_step1.py` (calculations, `--plot`, `--doc`), "
              "`docs/right_legs_diagram.png`, `docs/right_legs_swing.png`.\n")
     L.append("## Geometry (mm)\n")
-    L.append("Coxa 64.5, femur 64.5, tibia 130.59. Body frame: +X forward, +Y left, +Z up. "
+    L.append(f"Coxa {C}, femur {F}, tibia {T}. Body frame: +X forward, +Y left, +Z up. "
              "z is measured from the coxa axis.\n")
     L.append("| Leg | Coxa axis (x, y) | Calibration coxa / femur / tibia |")
     L.append("|---|---|---|")
@@ -287,7 +287,7 @@ def write_doc(path):
     L.append("A  v = x - mx        u = -(y - my)        z = z")
     L.append("B  yaw = atan2(v, u)                     coxa  = cal_coxa  + yaw[deg]")
     L.append("C  r = hypot(u, v)   L = r - 64.5   d = hypot(L, z)")
-    L.append("D  |64.5 - 130.59| <= d <= 195.09        (reachability)")
+    L.append(f"D  |{F} - {T}| <= d <= {F + T:.2f}        (reachability)")
     L.append("E  alpha = atan2(z, L)   beta = acos((F^2 + d^2 - T^2) / (2 F d))")
     L.append("   femur = cal_femur + (alpha + beta)[deg]")
     L.append("F  knee = acos((F^2 + T^2 - d^2) / (2 F T))        (180 = straight)")
