@@ -52,6 +52,13 @@ import sys
 import time
 from fractions import Fraction
 
+# Hiwonder LSC-32 servo library, used for the RDS3218 servos. Importing it opens the
+# serial port on the Raspberry Pi. On a PC it is missing: simulation and tests still run.
+try:
+    import ServoControl
+except ImportError:
+    ServoControl = None
+
 #---------------------------------------------------------------------------------
 # Settings
 
@@ -500,7 +507,8 @@ class ServoControlBus:
     """Sends commands with the Hiwonder ServoControl library (Raspberry Pi only)."""
 
     def __init__(self):
-        import ServoControl  # imported here so the module loads on a PC
+        if ServoControl is None:
+            raise ImportError("ServoControl library not found. Run this on the Raspberry Pi.")
         self._sc = ServoControl
 
     def send(self, joints, move_ms, legs=None):

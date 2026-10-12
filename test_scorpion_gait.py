@@ -263,21 +263,28 @@ class TestServoOutput(unittest.TestCase):
         calls = []
         stub = types.ModuleType("ServoControl")
         stub.setPWMServoMove = lambda sid, pulse, ms: calls.append((sid, pulse, ms))
-        saved = sys.modules.get("ServoControl")
-        sys.modules["ServoControl"] = stub
+        saved = sg.ServoControl
+        sg.ServoControl = stub
         try:
             bus = sg.ServoControlBus()
             bus.send({"RF": sg.STAND_RAW["RF"]}, move_ms=300)
         finally:
-            if saved is None:
-                del sys.modules["ServoControl"]
-            else:
-                sys.modules["ServoControl"] = saved
+            sg.ServoControl = saved
         expect = [(29, sg.pulse_us(97), 300), (30, sg.pulse_us(114), 300), (31, sg.pulse_us(27), 300)]
         self.assertEqual(calls, expect)
 
-    def test_module_imports_without_hardware(self):
-        self.assertNotIn("ServoControl", sys.modules.get("scorpion_gait").__dict__)
+    def test_bus_without_library_raises(self):
+        saved = sg.ServoControl
+        sg.ServoControl = None
+        try:
+            with self.assertRaises(ImportError):
+                sg.ServoControlBus()
+        finally:
+            sg.ServoControl = saved
+
+    def test_module_has_servocontrol_name(self):
+        # the name exists at module level (None on a PC, the library on the Pi)
+        self.assertTrue(hasattr(sg, "ServoControl"))
 
 
 if __name__ == "__main__":
