@@ -58,28 +58,40 @@ The flat-lay photo shows exactly this ratio: two equal short aluminium links
 | pose | source | coxa | femur | tibia |
 |---|---|---|---|---|
 | belly-down zero | `leg_calibration.json` 98/88/94 ×1.5 | 147.0 | 132.0 | 141.0 |
-| **STAND (initial posture)** | your table 102/110/35 ×1.5 | **153.0** | **165.0** | **52.5** |
+| **STAND (initial posture)** | `leg_stand.json` 97/114/27 ×1.5 (was 102/110/35) | **145.5** | **171.0** | **40.5** |
 | sit | your table 102/80/60 ×1.5 | 153.0 | 120.0 | 90.0 |
 
-The stand row is byte-identical to `POSITIONS["stand"]["RF"]` in
-`stand_sit_walk_tail_claw_belly.py` — i.e. these are the values that put the
-real robot on its feet in the photo. That makes them hardware truth, which is
-why they are used to settle the joint conventions below.
+### Updated six-leg STAND calibration (`leg_stand.json` / `POSITIONS["stand"]`)
 
-### What the stand pose means in millimetres (forward kinematics)
+| leg | legacy (coxa / femur / tibia) | physical ×1.5 (coxa / femur / tibia) | yaw | femur elev | knee bend / interior | foot local (u, v, z) mm | foot body (x, y, z) mm |
+|---|---|---|---|---|---|---|---|
+| **RF** | 97 / 114 / 27 | **145.5 / 171.0 / 40.5** | −1.5° | +39.0° | 100.5° / 79.5° | (178.8, −4.7, −78.7) | (+110.3, −238.8, −78.7) |
+| **RM** | 88 / 117 / 19 | **132.0 / 175.5 / 28.5** | −3.0° | +37.5° | 97.5° / 82.5° | (182.8, −9.6, −78.3) | (−9.6, −242.8, −78.3) |
+| **RR** | 101 / 110 / 25 | **151.5 / 165.0 / 37.5** | −3.0° | +34.5° | 97.5° / 82.5° | (178.5, −9.4, −84.4) | (−124.4, −238.5, −84.4) |
+| **LR** | 89 / 110 / 30 | **133.5 / 165.0 / 45.0** | −3.0° | +30.0° | 91.5° / 88.5° | (184.3, −9.7, −87.0) | (−124.7, +244.3, −87.0) |
+| **LM** | 90 / 112 / 22 | **135.0 / 168.0 / 33.0** | 0.0° | +33.0° | 93.0° / 87.0° | (185.9, 0.0, −82.4) | (+0.0, +245.9, −82.4) |
+| **LF** | 113 / 116 / 39 | **169.5 / 174.0 / 58.5** | +3.0° | +34.5° | 93.0° / 87.0° | (187.8, +9.8, −79.2) | (+124.8, +247.8, −79.2) |
+
+Compared with the earlier stand table (`102/110/35`, etc.), this updated stand calibration trims all six legs into much tighter agreement:
+* **Foot height (`z`) spread** across all six legs drops from **27.0 mm** (−69.2 to −96.2 mm) to **8.7 mm** (−78.3 to −87.0 mm), with front pair RF/LF within 0.5 mm (−78.7 vs −79.2 mm).
+* **Outboard reach (`u`) spread** drops from **39.8 mm** (175.0–214.8 mm) to **9.3 mm** (178.5–187.8 mm).
+* **Coxa yaw** is now within ±3.0° of straight out on every leg (eliminating RF's earlier +6.0° / +20.4 mm forward toe).
+* **Horizontal hip→foot moment arm (`L`)** on the right side pulls in from 129.6–150.6 mm to **114.3–118.5 mm**, reducing standing femur torque.
+
+### What the RF stand pose means in millimetres (forward kinematics)
 
 | quantity | value |
 |---|---|
-| coxa yaw | **+6.0°** (foot toed 20 mm forward) |
-| femur elevation | **+33.0°** above the coxa plane |
-| knee bend / interior angle | **88.5° / 91.5°** |
-| tibia angle from horizontal | −55.5° |
-| knee height above coxa plane | **+35.0 mm** (knee is the highest point — matches photo) |
-| foot, leg-local | u = 193.9 outboard, v = +20.4 forward, z = −76.8 (tape: 130 mm outboard of the HIP pivot = u 194.25, §7) |
-| foot, body frame | (x, y) = (+135, −254) |
-| **body height at stand** | **76.8 mm** computed; bench tape 65 mm (see §7: now an 11.8 mm open question) |
-| stance width (foot to foot) | 508 mm |
-| d (hip→foot) | 151.6 mm = **76 % of stretch** — comfortable mid-workspace |
+| coxa yaw | **−1.5°** (foot 4.7 mm aft of mount axis, essentially straight out) |
+| femur elevation | **+39.0°** above the coxa plane |
+| knee bend / interior angle | **100.5° / 79.5°** |
+| tibia angle from horizontal | −61.5° |
+| knee height above coxa plane | **+40.4 mm** (knee is the highest point — matches photo) |
+| foot, leg-local | u = 178.8 outboard, v = −4.7 forward, z = −78.7 (L = 114.6 mm outboard of hip pivot) |
+| foot, body frame | (x, y) = (+110, −239) |
+| **body height at stand** | **78.7 mm** computed on RF (78.3–87.0 mm across all six legs) |
+| stance width (foot to foot) | 478 mm (RF), ~486 mm average across all pairs |
+| d (hip→foot) | 139.1 mm = **70 % of stretch** — comfortable mid-workspace |
 
 ---
 
@@ -90,10 +102,10 @@ and only one of those matches the photo (knee at the top, foot far outboard):
 
 | FEMUR_SIGN | TIBIA_SIGN | femur elev | knee bend | foot z | knee z | verdict |
 |---|---|---|---|---|---|---|
-| +1 | +1 | +33.0 | −88.5 | **+146.8** | +35.0 | foot ABOVE the body — impossible |
-| **+1** | **−1** | +33.0 | +88.5 | **−76.8** | **+35.0** | **valid, knee UP — the photo** |
-| −1 | +1 | −33.0 | −88.5 | +76.8 | −35.0 | foot above the body — impossible |
-| −1 | −1 | −33.0 | +88.5 | −146.8 | −35.0 | valid but knee DOWN — contradicts photo |
+| +1 | +1 | +39.0 | −100.5 | **+128.5** | +40.4 | foot ABOVE the body — impossible |
+| **+1** | **−1** | +39.0 | +100.5 | **−78.7** | **+40.4** | **valid, knee UP — the photo** |
+| −1 | +1 | −39.0 | −100.5 | +78.7 | −40.4 | foot above the body — impossible |
+| −1 | −1 | −39.0 | +100.5 | −128.5 | −40.4 | valid but knee DOWN — contradicts photo |
 
 So, in plain language, for this robot:
 
@@ -116,8 +128,8 @@ Prop the robot so RF is free. From the stand pose, change **only the tibia**:
 
 | command (legacy units) | physical | expect if `TIBIA_SIGN = −1` is right |
 |---|---|---|
-| tibia 35 → 48 | 52.5 → 72.0 | knee **straightens**, foot swings out and up |
-| tibia 35 → 22 | 52.5 → 33.0 | knee **curls**, foot tucks under the body |
+| tibia 27 → 40 | 40.5 → 60.0 | knee **straightens**, foot swings out and up |
+| tibia 27 → 14 | 40.5 → 21.0 | knee **curls**, foot tucks under the body |
 
 If it is the other way round, keep `TIBIA_SIGN = +1` and tell me — then the
 stand table's tibia column was recorded through a different zero and we
@@ -153,19 +165,19 @@ the knee servo is the highest joint on the leg.
 
 ### Worked example — the stand pose itself
 
-Target = the stand foot: u = 193.9, v = +20.4, z = −76.8.
+Target = the stand foot: u = 178.82, v = −4.68, z = −78.73.
 
 ```
-yaw   = atan2(20.4, 193.9)        =  +6.00°      coxa_raw  = 147.0 + 6.00  = 153.00
-r     = 194.97   L = 130.72   d   = hypot(130.72, 76.8) = 151.63   (76 % of stretch)
-alpha = atan2(−76.8, 130.72)      = −30.42°
-beta  = acos((4128.06 + 22991.7 − 18387.36) / (2·64.25·151.63)) = acos(0.4482) = +63.37°
-elev  = −30.42 + 63.37            = +32.95°      femur_raw = 132.0 + 32.95 = 164.95 ≈ 165.0
-gamma = acos((4128.06 + 18387.36 − 22991.7) / (2·64.25·135.60)) = acos(−0.0273) = 91.57°
-phi   = 180 − 91.57               =  88.43°      tibia_raw = 141.0 − 88.43 =  52.57 ≈ 52.5
+yaw   = atan2(−4.68, 178.82)      =  −1.50°      coxa_raw  = 147.0 − 1.50  = 145.50
+r     = 178.88   L = 114.63   d   = hypot(114.63, 78.73) = 139.07   (70 % of stretch)
+alpha = atan2(−78.73, 114.63)     = −34.48°
+beta  = acos((4128.06 + 19339.4 − 18387.36) / (2·64.25·139.07)) = acos(0.2843) = +73.48°
+elev  = −34.48 + 73.48            = +39.00°      femur_raw = 132.0 + 39.00 = 171.00
+gamma = acos((4128.06 + 18387.36 − 19339.4) / (2·64.25·135.60)) = acos(+0.1823) = 79.50°
+phi   = 180 − 79.50               = 100.50°      tibia_raw = 141.0 − 100.50 = 40.50
 ```
 
-Round trip through the code returns **153.00 / 165.00 / 52.50** exactly —
+Round trip through the code returns **145.50 / 171.00 / 40.50** —
 the IK reproduces your hand-calibrated stand pose to the hundredth of a degree.
 
 Forward kinematics (used to check, and to produce the millimetre table in §1):
@@ -183,7 +195,7 @@ u = horiz·cos(yaw)   v = horiz·sin(yaw)   yaw = coxa_raw − 147.0
 ## 4. STAND as the initial posture, and one smooth RF cycle around it
 
 Implemented in this commit: `walk.py --user-stand` drives all six legs to the
-hand-calibrated table (RF = raw 153.0 / 165.0 / 52.5) in one onboard-interpolated
+hand-calibrated table (RF = raw 145.5 / 171.0 / 40.5) in one onboard-interpolated
 move, and `walk.py --rf-cycle` runs the cycle below on **channels 1/2/3 only**,
 the other five legs holding their pose — the single-leg bring-up step.
 
@@ -194,33 +206,34 @@ python3 walk.py --user-stand                # for real, robot propped
 python3 walk.py --rf-cycle --cycles 2       # watch RF swing/stance twice
 ```
 
-`--rf-cycle` treats the stand foot (193.9, +20.4, −76.8) as the cycle centre.
+`--rf-cycle` treats the stand foot (178.8, −4.7, −78.7) as the cycle centre.
 One 2000 ms cycle, stride 50 mm, lift 25 mm (figure, bottom panel):
 
 | phase | foot | joints |
 |---|---|---|
-| stance 0 → 0.5 | planted at z = −76.8, sweeps v +25 → −25 (body moves forward) | coxa does the work: 160.2 → 145.6 |
-| swing 0.5 → 1 | smoothstep forward, z = −76.8 + 25·sin(πt) | femur 162.8 → 182.7 → 162.8, tibia 56.1 → 41.9 → 56.1 |
+| stance 0 → 0.5 | planted at z = −78.7, sweeps v +20.3 → −29.7 (body moves forward) | coxa does the work: 153.5 → 137.6 |
+| swing 0.5 → 1 | smoothstep forward, z = −78.7 + 25·sin(πt) | femur 170.0 → 190.6 → 170.5, tibia 42.3 → 29.1 → 41.3 |
 
-Resulting raw ranges for the whole cycle: **coxa 145.6–160.2, femur 162.8–182.7,
-tibia 41.9–56.1** — every curve continuous with zero velocity at touch-down and
-lift-off, d between 140.6 and 151.6 mm (70–76 % of stretch), and the deepest
-servo position 41.9° still 40° inside the safe band. At 9600 baud a 3-servo
+Resulting raw ranges for the whole cycle: **coxa 137.6–153.5, femur 170.0–190.6,
+tibia 29.1–42.3** — every curve continuous with zero velocity at touch-down and
+lift-off, d between 126.6 and 141.0 mm (63–71 % of stretch), and the deepest
+servo position 29.1° still 27° inside the safe band. At 9600 baud a 3-servo
 array frame is 14 B = 14.6 ms, so 16 segments of 125 ms pipeline with ~11 % of
 each segment spent on the wire.
 
-### One caution: the stand stance is wide, and width costs torque
+### One caution: the stand stance width vs femur torque
 
 Femur torque = leg load × horizontal distance hip→foot, independent of body
-height. At stand that arm is L = 130.7 mm = 13.1 cm. On a 3.0 kg robot a tripod
-leg carries ≈1.0 kg → **13.1 kg·cm = 65 % of stall**, before any dynamic
-factor. Holding that for minutes will cook the femur servos.
+height. With the updated stand table that arm on RF is L = 114.6 mm = 11.5 cm
+(down from 13.1 cm in the earlier 102/110/35 table). On a 3.0 kg robot a tripod
+leg carries ≈1.0 kg → **11.5 kg·cm = 57 % of stall** static (or ~80 % with ×1.4
+dynamic factor).
 
 Two levers, neither of which touches your stand pose (it stays the pre-walk
-posture): tuck the feet in for the walking stance (u ≈ 150–160 mm → L ≈ 86–96 mm
-→ 8.6–9.6 kg·cm = 43–48 % of stall), and/or verify the real mass and re-run
-`walk.py --check --mass <kg>`. Recommend: stand → 1 s transition to the tucked
-walking stance → gait.
+posture): tuck the feet in for the walking stance (`GaitConfig` default uses
+`reach_out = 80 mm` → L = 80 mm → 11.5 kg·cm = 58 % of stall including ×1.4
+dynamic), and/or verify the real mass and re-run `walk.py --check --mass <kg>`.
+Recommend: stand → short transition to the tucked walking stance → gait.
 
 ---
 
@@ -230,15 +243,17 @@ walking stance → gait.
    strength of the stand-table + photo evidence; the jiggle is the physical
    confirmation. If it disagrees, flip the constant back and re-derive.
 2. **The sit row does not compute as a sit.** Under the confirmed convention it
-   puts the body 134.2 mm up (higher than stand's 76.8 mm) with the leg at 92 %
+   puts the body 134.2 mm up (higher than stand's 78.7 mm) with the leg at 92 %
    of stretch. A sit should be lower and more folded. Was the robot propped or
    lifted when that row was recorded? Not a blocker for walking, but it means
    the sit row cannot be used as a second calibration point until re-checked.
-3. **Coxa +6° at stand** toes the RF foot 20 mm forward of the mount axis.
-   Intentional trim, or horn tooth? Harmless either way — the IK absorbs it —
-   but worth knowing whether "straight out" is 153 or 147 for this leg.
-4. LF/RM/RR/LM/LR rows of the same table have not been checked yet. They will
-   be, one leg at a time, after RF walks.
+3. **RF coxa yaw resolved** — the updated stand calibration (`97` vs belly-down
+   `98`) puts RF yaw at −1.5° (−4.7 mm aft), eliminating the earlier +6° (+20.4 mm)
+   forward bias.
+4. **All six stand rows checked** — see the six-leg table in §1; all six legs
+   now sit within an 8.7 mm height band (`z` −78.3 to −87.0 mm) and a 9.3 mm
+   outboard reach band (`u` 178.5–187.8 mm), and all round-trip through the IK
+   to 0.00° error (`walk.py --self-test`).
 
 ---
 

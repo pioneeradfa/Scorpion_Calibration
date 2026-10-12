@@ -8,16 +8,16 @@ WHAT CHANGED FROM THE PREVIOUS VERSION
    touched a servo.  History: the original file shipped -1 with a comment that
    described +1; the first correction flipped it to +1 to match that comment;
    the hardware evidence then flipped it back to -1 for good.  The evidence is
-   the hand-calibrated STAND pose (POSITIONS["stand"] in the legacy driver,
-   RF raw 153.0/165.0/52.5 physical), which is the pose in the bench photo:
-   the calibration pose is the leg DEAD STRAIGHT, so a standing knee bend of
-   88.5 deg has to be reached by MOVING AWAY from cal_tibia = 141.0, and stand
-   sits 88.5 deg BELOW it.  A hinge only bends one way, therefore decreasing
-   raw tibia bends the knee and increasing it straightens the knee.  With +1
-   the same stand pose solves to a foot 146 mm ABOVE the body plane, and the
-   photo shows the knee servo as the highest joint on the leg with the body
-   deck ~70 mm up, matching the -1 solution (72.5 mm) to within measurement
-   error.  See RF_LEG_IK.md section 2 for the full table.
+   the hand-calibrated STAND pose (leg_stand.json / POSITIONS["stand"],
+   RF raw 145.5/171.0/40.5 physical = 97/114/27 legacy), which is the pose the
+   robot stands in on the bench: the calibration pose is the leg DEAD STRAIGHT,
+   so a standing knee bend of 100.5 deg has to be reached by MOVING AWAY from
+   cal_tibia = 141.0, and stand sits 100.5 deg BELOW it.  A hinge only bends one
+   way, therefore decreasing raw tibia bends the knee and increasing it
+   straightens the knee.  With +1 the same stand pose solves to a foot 128.5 mm
+   ABOVE the body plane, whereas the robot has the knee servo as the highest
+   joint on the leg (+40.4 mm) with the body deck ~78.7 mm up, matching the -1
+   solution.  See RF_LEG_IK.md section 2 for the full table.
 
 2. All angles are TRUE PHYSICAL SHAFT DEGREES (0-270), not the legacy /180
    command units.  Pulse conversion lives in servo_lsc24.py.  Calibration
@@ -127,6 +127,9 @@ LEGACY_CALIBRATION_SCALE = 1.5
 CALIBRATION_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "leg_calibration.json"
 )
+STAND_CALIBRATION_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "leg_stand.json"
+)
 
 # Fallback matches leg_calibration.json exactly.  Kept so self_test() runs on a
 # machine with no data file, but it is a duplicate -- if you re-calibrate, edit
@@ -138,6 +141,17 @@ _CALIBRATION_LEGACY = {
     "LR": {"coxa": 87,  "femur": 90, "tibia": 91},
     "LM": {"coxa": 90,  "femur": 90, "tibia": 84},
     "LF": {"coxa": 115, "femur": 93, "tibia": 101},
+}
+
+# Fallback matches leg_stand.json (and POSITIONS["stand"] in
+# stand_sit_walk_tail_claw_belly.py) exactly.
+_STAND_LEGACY = {
+    "RF": {"coxa": 97,  "femur": 114, "tibia": 27},
+    "RM": {"coxa": 88,  "femur": 117, "tibia": 19},
+    "RR": {"coxa": 101, "femur": 110, "tibia": 25},
+    "LR": {"coxa": 89,  "femur": 110, "tibia": 30},
+    "LM": {"coxa": 90,  "femur": 112, "tibia": 22},
+    "LF": {"coxa": 113, "femur": 116, "tibia": 39},
 }
 
 
@@ -165,7 +179,24 @@ def load_calibration(path: str = CALIBRATION_FILE,
     return {leg: {j: src[leg][j] * scale for j in JOINT_NAMES} for leg in LEG_ORDER}
 
 
+def load_stand_calibration(path: str = STAND_CALIBRATION_FILE,
+                           scale: float = LEGACY_CALIBRATION_SCALE
+                           ) -> Dict[str, Tuple[float, float, float]]:
+    """Load hand-calibrated stand pose angles in true physical degrees."""
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            data = json.load(f)
+        src = {leg: {j: data[leg][j]["angle"] for j in JOINT_NAMES} for leg in LEG_ORDER}
+    else:
+        src = {leg: dict(_STAND_LEGACY[leg]) for leg in LEG_ORDER}
+    return {
+        leg: (src[leg]["coxa"] * scale, src[leg]["femur"] * scale, src[leg]["tibia"] * scale)
+        for leg in LEG_ORDER
+    }
+
+
 CALIBRATION = load_calibration()
+STAND_CALIBRATION = load_stand_calibration()
 
 
 # ============================================================
@@ -389,6 +420,18 @@ def self_test(verbose: bool = True) -> bool:
         flag = "ok" if err < 0.05 else "FAIL"
         ok &= err < 0.05
         say(f"   {leg}: u={u:7.2f} (want {FULL_REACH:.2f})  v={v:+6.3f}  z={z:+6.3f}   {flag}")
+
+    say("\n   FK -> IK round trip at the hand-calibrated STAND pose (leg_stand.json):")
+    for leg in LEG_ORDER:
+        st = STAND_CALIBRATION[leg]
+        u, v, z = leg_fk(leg, *st)
+        bx, by, bz = leg_fk_body(leg, *st)
+        back = leg_ik_body(leg, bx, by, bz)
+        err = max(abs(a - b) for a, b in zip(st, back))
+        flag = "ok" if err < 0.05 else "FAIL"
+        ok &= err < 0.05
+        say(f"   {leg}: stand=({st[0]:5.1f},{st[1]:5.1f},{st[2]:4.1f}) -> "
+            f"u={u:6.2f} v={v:+6.2f} z={z:+6.2f} -> err={err:.2e} deg   {flag}")
 
     # ---- 2. IK -> FK round trip at bent-knee poses ----
     # Targets span the gait envelope.  Not every target is reachable by every
