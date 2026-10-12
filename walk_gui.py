@@ -25,6 +25,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import icc_turn as it
 import scorpion_gait as sg
 from walk import GLIDE_MS
 
@@ -38,9 +39,12 @@ MAX_CYCLES = 50
 MAX_STEPS = 120
 MAX_STRIDE = 120.0            # mm
 MAX_LIFT = 80.0               # mm
-DIRECTIONS = ("forward", "backward", "left", "right")
+DIRECTIONS = ("forward", "backward", "left", "right", "curve_left", "curve_right")
 DIRECTION_LABEL = {"forward": "forward", "backward": "backward",
-                   "left": "turn left in place", "right": "turn right in place"}
+                   "left": "turn left in place", "right": "turn right in place",
+                   "curve_left": "curve left (forward)", "curve_right": "curve right (forward)"}
+MIN_RADIUS_MM = 60            # below this the ICC is inside the body footprint
+MAX_RADIUS_MM = 1000
 
 GAIT_INFO = {
     "tripod": "3 legs in the air at once. Fastest, least stable.",
@@ -99,11 +103,15 @@ def parse_params(data):
         "direction": direction,
         "pose": pose,
         "pose_ms": _number(data, "pose_ms", DEFAULT_POSE_MS, 500, 6000, int),
+        "radius": _number(data, "radius", 300.0, MIN_RADIUS_MM, MAX_RADIUS_MM),
         "legs": legs,
     }
 
 
 def build_gait(p):
+    if p["direction"].startswith("curve_"):
+        return it.make_curve_gait(p["gait"], p["steps"], p["stride"], p["lift"], p["radius"],
+                                  p["direction"][len("curve_"):])
     gait = sg.Gait(p["gait"], steps=p["steps"], stride=p["stride"], lift=p["lift"])
     if p["direction"] == "left":
         gait.set_turn_in_place("CCW")
@@ -136,14 +144,16 @@ def plan(p):
         return result
 
     cycle_s = p["steps"] * p["tick_ms"] / 1000.0
-    turning = p["direction"] in ("left", "right")
+    speed, rate = it.body_motion(gait, cycle_s)
+    spin = p["direction"] in ("left", "right")
     result["summary"] = {
         "steps": p["steps"],
         "tick_ms": p["tick_ms"],
         "cycle_s": cycle_s,
         "total_s": cycle_s * p["cycles"],
         "direction": DIRECTION_LABEL[p["direction"]],
-        "body_speed_mm_s": None if turning else p["stride"] / cycle_s,
+        "body_speed_mm_s": None if spin else speed,
+        "turn_rate_deg_s": rate if (spin or p["direction"].startswith("curve_")) else None,
         "worst_joint_step_deg": gait.worst_joint_step(cycles=1),
         "tick_warning": p["tick_ms"] < SAFE_TICK_MS,
         "legs_moved": len(p["legs"]),
@@ -313,7 +323,7 @@ def config_payload():
         "start_pose": sg.START_POSE,
         "legs": list(sg.LEG_ORDER),
         "defaults": {"tick_ms": DEFAULT_TICK_MS, "stride": sg.DEFAULT_STRIDE, "lift": sg.DEFAULT_LIFT,
-                     "pose_ms": DEFAULT_POSE_MS, "cycles": 1},
+                     "pose_ms": DEFAULT_POSE_MS, "cycles": 1, "radius": 300},
         "limits": {"tick_min": MIN_TICK_PLAN_MS, "safe_tick_min": SAFE_TICK_MS, "tick_max": MAX_TICK_MS,
                    "cycles_max": MAX_CYCLES, "steps_max": MAX_STEPS, "stride_max": MAX_STRIDE,
                    "lift_max": MAX_LIFT},
@@ -500,6 +510,9 @@ PAGE = r"""<!doctype html>
         <div><label for="stride">Stride (mm)</label><input type="number" id="stride" min="0" max="120" step="1"></div>
         <div><label for="lift">Lift (mm)</label><input type="number" id="lift" min="0" max="80" step="1"></div>
       </div>
+      <label for="radius">Curve radius (mm)</label>
+      <input type="number" id="radius" min="60" max="1000" step="10">
+      <div class="hint">Only for "Curve left/right": distance from the body centre to the centre of the curve. Smaller = tighter curve.</div>
       <label for="pose">Walking stand</label>
       <select id="pose"></select>
       <div class="hint">The robot first moves to <b>stand_initial</b>, then to this stand.</div>
@@ -586,7 +599,8 @@ let legsOn = new Set();
 
 const LEG_ORDER = ["LF", "RF", "LM", "RM", "LR", "RR"];
 const LEG_NAME = {LF:"Left front", RF:"Right front", LM:"Left middle", RM:"Right middle", LR:"Left rear", RR:"Right rear"};
-const DIRS = [["forward","Forward"],["backward","Backward"],["left","Turn left"],["right","Turn right"]];
+const DIRS = [["forward","Forward"],["backward","Backward"],["left","Turn left"],["right","Turn right"],
+              ["curve_left","Curve left"],["curve_right","Curve right"]];
 
 function toast(text, kind) {
   const b = $("banner");
@@ -616,6 +630,7 @@ function params() {
     direction: direction,
     pose: $("pose").value,
     pose_ms: config.defaults.pose_ms,
+    radius: parseFloat($("radius").value) || config.defaults.radius,
     legs: legs.length === 6 ? null : legs,
   };
 }
@@ -663,7 +678,8 @@ function buildControls() {
   $("cycles").value = config.defaults.cycles;
   $("stride").value = config.defaults.stride;
   $("lift").value = config.defaults.lift;
-  ["cycles", "stride", "lift"].forEach(id => { $(id).onchange = schedulePlan; });
+  $("radius").value = config.defaults.radius;
+  ["cycles", "stride", "lift", "radius"].forEach(id => { $(id).onchange = schedulePlan; });
 
   const lwrap = $("legs");
   LEG_ORDER.forEach(n => {
@@ -738,7 +754,8 @@ function renderPlan() {
   $("sSpeed").textContent = s.body_speed_mm_s === null ? "turn" : fmt(s.body_speed_mm_s, 1);
   $("sJoint").textContent = fmt(s.worst_joint_step_deg, 1);
   $("planNote").textContent = plan.params.gait + ", " + s.steps + " steps, " + s.direction
-    + ", " + s.legs_moved + " leg(s) on the robot, " + plan.params.cycles + " cycle(s).";
+    + ", " + s.legs_moved + " leg(s) on the robot, " + plan.params.cycles + " cycle(s)."
+    + (s.turn_rate_deg_s === null ? "" : " Turn " + fmt(s.turn_rate_deg_s, 1) + " deg/s.");
   if (s.tick_warning) toast("Speed is faster than the servo link can keep up with (" + s.tick_ms + " ms). Robot walks are blocked below " + config.limits.safe_tick_min + " ms.", "warn");
   frame = Math.min(frame, s.steps - 1);
   $("scrub").max = s.steps - 1;

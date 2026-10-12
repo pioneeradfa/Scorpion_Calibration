@@ -36,6 +36,7 @@ import argparse
 import sys
 import time
 
+import icc_turn as it
 import scorpion_gait as sg
 
 GLIDE_MS = 1000         # glide from the stand into the first gait pose
@@ -45,6 +46,9 @@ DEFAULT_POSE_MS = 2000  # slow moves to and from the postures
 
 def build_gait(args):
     steps = args.steps if args.steps is not None else sg.GAIT_DEFAULT_STEPS[args.gait]
+    if args.curve:
+        return it.make_curve_gait(args.gait, steps, args.stride, args.lift,
+                                  args.curve_radius, args.curve, args.backward)
     gait = sg.Gait(args.gait, steps=steps, stride=args.stride, lift=args.lift)
     if args.turn_left:
         gait.set_turn_in_place("CCW")
@@ -56,6 +60,9 @@ def build_gait(args):
 
 
 def direction_text(args):
+    if args.curve:
+        return "curve %s, radius %.0f mm, %s" % (args.curve, args.curve_radius,
+                                                  "backward" if args.backward else "forward")
     if args.turn_left:
         return "turn left in place"
     if args.turn_right:
@@ -69,9 +76,14 @@ def print_plan(args, gait):
     print("Gait %s, %s" % (args.gait, direction_text(args)))
     print("  steps per cycle %d, tick %d ms -> cycle %.1f s, %d cycle(s) = %.1f s"
           % (gait.steps, args.tick_ms, cycle_s, args.cycles, total_s))
-    if not (args.turn_left or args.turn_right):
-        print("  stride %.0f mm per cycle -> about %.1f mm/s, %.0f mm in total"
-              % (args.stride, args.stride / cycle_s, args.stride * args.cycles))
+    speed, rate = it.body_motion(gait, cycle_s)
+    if args.turn_left or args.turn_right:
+        print("  turn rate about %.1f deg/s (spin in place, no body travel)" % rate)
+    elif args.curve:
+        print("  " + it.describe(gait, cycle_s))
+    else:
+        print("  stride %.0f mm per stance -> body about %.1f mm/s, %.0f mm in total"
+              % (args.stride, speed, speed * args.cycles * cycle_s))
     print("  lift %.0f mm, walking stand '%s', start from '%s'"
           % (args.lift, args.pose, args.start_pose))
 
@@ -152,6 +164,10 @@ def main(argv=None):
     direction.add_argument("--backward", action="store_true", help="walk backward")
     direction.add_argument("--turn-left", action="store_true", help="turn left in place")
     direction.add_argument("--turn-right", action="store_true", help="turn right in place")
+    parser.add_argument("--curve", choices=("left", "right"),
+                        help="walk a curve turning left or right (ICC on that side; see icc_turn.py)")
+    parser.add_argument("--curve-radius", dest="curve_radius", type=float,
+                        help="curve radius in mm: body centre to the ICC (needed with --curve)")
     parser.add_argument("--pose", default=sg.DEFAULT_POSE, choices=sg.POSE_NAMES,
                         help="walking stand (default: stand)")
     parser.add_argument("--start-pose", default=sg.START_POSE, choices=sg.POSE_NAMES,
@@ -163,12 +179,16 @@ def main(argv=None):
 
     if args.cycles < 1 or args.tick_ms < 20:
         parser.error("--cycles must be >= 1 and --tick-ms must be >= 20")
+    if args.curve and (args.turn_left or args.turn_right):
+        parser.error("--curve cannot be combined with --turn-left / --turn-right")
+    if bool(args.curve) != (args.curve_radius is not None):
+        parser.error("--curve and --curve-radius must be used together")
     args.legs = parse_legs(parser, args.legs)
 
     sg.set_active_pose(args.pose)
     try:
         gait = build_gait(args)
-    except ValueError as exc:
+    except (ValueError, sg.GaitError) as exc:
         parser.error(str(exc))
 
     problems = gait.check(cycles=1)

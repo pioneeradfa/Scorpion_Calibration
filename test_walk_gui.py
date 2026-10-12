@@ -88,7 +88,7 @@ class TestPlan(unittest.TestCase):
         s = res["summary"]
         self.assertAlmostEqual(s["cycle_s"], 12 * 0.2)
         self.assertAlmostEqual(s["total_s"], 12 * 0.2)
-        self.assertAlmostEqual(s["body_speed_mm_s"], 45 / 2.4)
+        self.assertAlmostEqual(s["body_speed_mm_s"], 45 / 1.2)   # stance = half the cycle
         self.assertFalse(s["tick_warning"])
         # tripod: three legs in the air on every tick
         self.assertTrue(all(len(f["air"]) == 3 for f in res["frames"]))
@@ -104,6 +104,18 @@ class TestPlan(unittest.TestCase):
                 if n not in order:
                     order.append(n)
         self.assertEqual(order, ["LR", "LM", "LF", "RF", "RM", "RR"])
+
+    def test_curve_reports_speed_and_turn_rate(self):
+        with gui.POSE_LOCK:
+            res = gui.plan(base_params(direction="curve_left", radius=300))
+        self.assertTrue(res["ok"])
+        self.assertIsNotNone(res["summary"]["turn_rate_deg_s"])
+        self.assertGreater(res["summary"]["body_speed_mm_s"], 0)
+
+    def test_straight_has_no_turn_rate(self):
+        with gui.POSE_LOCK:
+            res = gui.plan(base_params())
+        self.assertIsNone(res["summary"]["turn_rate_deg_s"])
 
     def test_turn_has_no_body_speed(self):
         with gui.POSE_LOCK:

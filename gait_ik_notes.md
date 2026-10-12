@@ -6,6 +6,8 @@ Files
 - `walk.py`              any gait, any number of cycles, tick timing (`--tick-ms`), dry run by default
 - `walk_gui.py`          browser control panel: gait, speed, steps, cycles, direction, legs; live plan and gait picture; Walk / Stop. Standard library only. `--host 127.0.0.1` (default, this machine) or `0.0.0.0` (network)
 - `test_walk_gui.py`      tests for the panel (request checks, plan, walk with a fake bus, stop, HTTP)
+- `icc_turn.py`          curves and turns with an ICC (skills section 7): per-leg stride, arc angle per step, guards; `--curve left|right --radius R`
+- `test_icc_turn.py`     tests for the ICC code (matches the existing gait for straight and spin, direction, guards, speed)
 - `test_scorpion_gait.py` unit tests (no hardware): `python3 -m unittest -v test_scorpion_gait`
 - Reference: `skills_12oct.md`
 
@@ -14,6 +16,9 @@ Files
 python3 walk.py --gait ripple_123456 --cycles 2     # dry run: plan and one cycle of angles
 python3 walk.py --hardware --legs RF --cycles 1        # one leg, one cycle, asks YES
 python3 walk.py --hardware --gait tripod --cycles 3 --tick-ms 250
+python3 walk.py --curve left --curve-radius 300 --cycles 3   # curve left, forward, ICC 300 mm to the left
+python3 walk.py --curve right --curve-radius 200 --backward  # curve right, backward
+python3 icc_turn.py --curve left --radius 300               # section 7 numbers, dry run
 python3 walk_gui.py                                     # control panel at http://localhost:8000
 python3 walk_gui.py --host 0.0.0.0                       # also from another computer on the network
 python3 walk_one_step.py                    # dry run: prints the 12-tick step
@@ -110,3 +115,24 @@ usable, but the real sit has to be checked by eye:
   `scorpion_controller_v2.py` is the controller in the repo.
 - Migrate `scorpion_controller_v2.py`, `ik_module.py` and `ik_7da.py` to the 1.5 scale, or
   point them at `scorpion_gait.py`. They were not changed in this step.
+
+## ICC curves and turns (section 7)
+
+- ICC = one point in the body X-Y plane (+X forward, +Y left, origin = body centre). Every foot
+  moves on a circle around it. Far ahead = straight walk; at the centre = spin in place.
+- Curve left forward: ICC at (0, +R), CCW. Curve right forward: ICC at (0, -R), CW.
+  Backward (`--backward`) reverses the travel; the curve side stays the same.
+  Verified by the planted-foot direction test in `test_icc_turn.py`.
+- Per-leg stride: legStride = stride x legDist / maxDist. Arc per stance:
+  alpha = 2 asin(stride / (2 maxDist)), the same for all legs. Each step moves the bearing by alpha / steps-in-phase.
+- Guards: ICC closer than 5 mm to a foot, or a stride longer than the outer leg's circle, is refused.
+- IccTurnGait gives the same feet as the existing Gait for straight walking and spin (max difference 1e-6 deg).
+
+## Body speed (corrected)
+
+- The planted feet move the body during stance only. Body speed = stride / stance time,
+  stance time = (1 - swing fraction) x cycle. Tripod: 45 mm per 1.2 s = 37.5 mm/s at 200 ms.
+  Ripples and caterpillar: 45 mm per 5 s = 9 mm/s at 200 ms x 30 steps.
+- Earlier figures (18.8 mm/s tripod, 7.5 mm/s ripple) divided by the whole cycle and were too low.
+- Turns: turn rate = alpha / stance time (deg/s). Curves: speed = alpha x |ICC| / stance time.
+
