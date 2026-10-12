@@ -41,7 +41,12 @@
 # Usage
 #   python3 scorpion_gait.py                    simulation checks, no servo output
 #   python3 scorpion_gait.py --gait ripple_123456 --cycles 2
+#   python3 scorpion_gait.py --pose stand_initial             checks with the first stand
+#   python3 scorpion_gait.py --hardware --goto sit --legs RF  move one leg to sit (asks YES)
 #   python3 scorpion_gait.py --hardware --legs RF --cycles 1   real servos (asks YES)
+#
+# POSTURES (raw coxa/shoulder, femur, tibia): stand (default, recorded 2026-10-12),
+#   stand_initial (the first manual stand, skills 5.1) and sit (skills 5.2, unverified).
 #=================================================================================
 
 import argparse
@@ -104,11 +109,30 @@ CAL_FALLBACK = {
     "LF": (115, 93, 101), "LM": (90, 90, 84), "LR": (87, 90, 91),
 }
 
-# Stand pose, raw [coxa, femur, tibia] (skills 5.1, re-recorded 2026-10-12)
-STAND_RAW = {
-    "LF": (113, 116, 39), "LM": (90, 112, 22), "LR": (89, 110, 30),
-    "RF": (97, 114, 27),  "RM": (88, 117, 19), "RR": (101, 110, 25),
+# Postures, raw [coxa (shoulder), femur, tibia] per leg. Pins per SERVO_IDS.
+#   stand          skills 5.1, re-recorded on the robot 2026-10-12. Default; walking neutral.
+#   stand_initial  skills 5.1 "superseded original manual table" (the first stand).
+#   sit            skills 5.2. The 5.4 sit feet were computed with the old scale and are
+#                  stale, so the sit is NOT verified in this model. Check it on the robot.
+POSES = {
+    "stand": {
+        "LF": (113, 116, 39), "LM": (90, 112, 22), "LR": (89, 110, 30),
+        "RF": (97, 114, 27),  "RM": (88, 117, 19), "RR": (101, 110, 25),
+    },
+    "stand_initial": {
+        "LF": (115, 110, 40), "LM": (90, 110, 20), "LR": (90, 110, 30),
+        "RF": (102, 110, 35), "RM": (90, 110, 35), "RR": (103, 105, 35),
+    },
+    "sit": {
+        "LF": (115, 80, 65), "LM": (90, 80, 45), "LR": (90, 80, 55),
+        "RF": (102, 80, 60), "RM": (90, 80, 60), "RR": (101, 75, 60),
+    },
 }
+POSE_NAMES = sorted(POSES)
+DEFAULT_POSE = "stand"
+
+# Recorded stand, kept under its old name for existing code
+STAND_RAW = POSES["stand"]
 
 # Foot-position check values from skills 5.3.1 (body frame relative to coxa axis)
 # (u = outward radial distance, v = forward, z = up) in mm
@@ -166,15 +190,22 @@ def raw_to_phys(raw):
 class Leg:
     """One leg. Solves IK/FK in the leg frame and converts to body frame."""
 
-    def __init__(self, name, cal=None, stand_raw=None, mount=None, servo_ids=None):
+    def __init__(self, name, cal=None, mount=None, servo_ids=None, pose=DEFAULT_POSE):
         self.name = name
         self.side = name[0]                       # "L" or "R"
         self.mount_x, self.mount_y = mount or MOUNT[name]
         self.cal = cal or CALIBRATION[name]       # straight-leg zeros (raw)
         self.servo_ids = servo_ids or SERVO_IDS[name]
-        self.stand_raw = tuple(stand_raw or STAND_RAW[name])
-        # Neutral (stand) foot position, body frame, from FK of the recorded stand
-        self.neutral = self.fk(self.stand_raw)
+        self.set_pose(pose)
+
+    def set_pose(self, pose):
+        """Select the posture used as this leg's neutral (for walking and for stand())."""
+        if pose not in POSES:
+            raise ValueError("Unknown pose %r. Choose from %s" % (pose, POSE_NAMES))
+        self.pose = pose
+        self.pose_raw = tuple(POSES[pose][self.name])
+        # Neutral foot position, body frame, from FK of this posture
+        self.neutral = self.fk(self.pose_raw)
 
     # --- forward kinematics ---------------------------------------------------
     def radial_signed(self, raw):
@@ -417,7 +448,7 @@ class Gait:
         return out
 
     def neutral_joints(self):
-        return {name: leg.stand_raw for name, leg in self.legs.items()}
+        return {name: leg.pose_raw for name, leg in self.legs.items()}
 
     def next_joints(self):
         """Joint angles for the current tick, then advance the tick by one."""
@@ -519,10 +550,33 @@ class ServoControlBus:
                 self._sc.setPWMServoMove(servo_id, pulse_us(angle), move_ms)
 
 
-def stand(bus, move_ms=1500, legs=None):
-    """Move every leg to the recorded stand pose."""
-    bus.send({name: leg.stand_raw for name, leg in LEGS.items()}, move_ms, legs)
+def set_active_pose(pose):
+    """Set the posture used as the neutral for all legs (stand(), walking)."""
+    for leg in LEGS.values():
+        leg.set_pose(pose)
+
+
+def posture_joints(pose):
+    """Raw joint angles of every leg for a named posture (no change to the active pose)."""
+    if pose not in POSES:
+        raise ValueError("Unknown pose %r. Choose from %s" % (pose, POSE_NAMES))
+    return {name: tuple(POSES[pose][name]) for name in LEG_ORDER}
+
+
+def move_to_pose(bus, pose, move_ms=1500, legs=None):
+    """Move the legs to a named posture and wait for the move to finish."""
+    bus.send(posture_joints(pose), move_ms, legs)
     time.sleep(move_ms / 1000.0)
+
+
+def stand(bus, move_ms=1500, legs=None):
+    """Move every leg to the active neutral posture (default: the recorded stand)."""
+    move_to_pose(bus, LEGS["LF"].pose, move_ms, legs)
+
+
+def sit(bus, move_ms=2000, legs=None):
+    """Move every leg to the sit posture (skills 5.2). Unverified: check on the robot."""
+    move_to_pose(bus, "sit", move_ms, legs)
 
 
 def walk(gait, bus, cycles=1, move_ms=200, legs=None, on_tick=None):
@@ -569,7 +623,7 @@ def check_stand_table():
     worst = 0.0
     for name in LEG_ORDER:
         leg = LEGS[name]
-        lx, ly, z = leg.fk_leg(leg.stand_raw)
+        lx, ly, z = leg.fk_leg(POSES["stand"][name])
         u = math.hypot(lx, ly)
         v = lx
         ref = STAND_TABLE_531[name]
@@ -584,12 +638,33 @@ def check_stand_round_trip():
     for name in LEG_ORDER:
         leg = LEGS[name]
         back = leg.ik(*leg.neutral)
-        worst = max(worst, max(abs(a - b) for a, b in zip(back, leg.stand_raw)))
+        worst = max(worst, max(abs(a - b) for a, b in zip(back, leg.pose_raw)))
     return worst
 
 
 #---------------------------------------------------------------------------------
 # Command line
+
+def check_postures():
+    """For every named posture: foot position and whether it is inside reach and the safe band.
+    Returns a list of (pose, leg, foot, problem-or-None)."""
+    rows = []
+    for pose in POSE_NAMES:
+        for name in LEG_ORDER:
+            leg = LEGS[name]
+            raw = POSES[pose][name]
+            foot = leg.fk(raw)
+            problem = None
+            try:
+                back = leg.ik(*foot)
+                worst = max(abs(a - b) for a, b in zip(back, raw))
+                if worst > 1e-6:
+                    problem = "IK does not reproduce the posture (error %.2f raw)" % worst
+            except KinematicsError as exc:
+                problem = str(exc)
+            rows.append((pose, name, foot, problem))
+    return rows
+
 
 def _print_joint_table(gait, ticks):
     print("tick  " + "  ".join("%-17s" % n for n in LEG_ORDER))
@@ -601,8 +676,10 @@ def _print_joint_table(gait, ticks):
 
 def run_checks(args):
     ok = True
+    set_active_pose(args.pose)
     print("=" * 74)
     print("Scorpion gait - checks (270-deg servos, phys = 1.5 * raw)")
+    print("Active posture (walking neutral): %s" % args.pose)
     print("=" * 74)
 
     err, rows = check_stand_table()
@@ -651,8 +728,36 @@ def run_checks(args):
         print("\n[5] Joint angles (raw coxa femur tibia) for forward walking:")
         _print_joint_table(g, range(0, args.steps, max(1, args.steps // 10)))
 
+    print("\n[6] Postures (shoulder = coxa). Each leg must be reachable and inside the safe band:")
+    posture_rows = check_postures()
+    for pose in POSE_NAMES:
+        rows = [r for r in posture_rows if r[0] == pose]
+        bad = [r for r in rows if r[3]]
+        raws = [v for name in LEG_ORDER for v in POSES[pose][name]]
+        lo, hi = min(raws), max(raws)
+        print("    %-14s legs ok: %d/6   raw range %d..%d (phys %.0f..%.0f)  -> %s" % (
+            pose, len(rows) - len(bad), lo, hi, raw_to_phys(lo), raw_to_phys(hi),
+            "PASS" if not bad else "FAIL"))
+        for r in bad:
+            print("        %s: %s" % (r[1], r[3]))
+        if pose == "sit":
+            print("        NOTE: sit angles are from skills 5.2. Feet are not verified (5.4 is stale).")
+        ok &= not bad
+    print("    feet of the active posture (%s):" % args.pose)
+    for r in posture_rows:
+        if r[0] == args.pose:
+            print("        %s  x %7.1f  y %7.1f  z %7.1f" % (r[1], r[2][0], r[2][1], r[2][2]))
+
     print("\nRESULT: %s" % ("ALL CHECKS PASS" if ok else "SOME CHECKS FAILED"))
     return 0 if ok else 1
+
+
+def _confirm():
+    """Asks for YES on the console. Anything else (or no input) cancels."""
+    try:
+        return input("Type YES to continue: ").strip() == "YES"
+    except EOFError:
+        return False
 
 
 def run_hardware(args):
@@ -664,6 +769,25 @@ def run_hardware(args):
                 return 2
     else:
         legs = None
+
+    set_active_pose(args.pose)
+
+    if args.goto:
+        # only move to one posture, then stop (no walking)
+        print("About to move the REAL servos to posture '%s'." % args.goto)
+        print("  legs: %s" % ("all" if legs is None else ", ".join(legs)))
+        print("  Hold the robot or keep the feet free. Keep power current-limited.")
+        if not _confirm():
+            print("Cancelled.")
+            return 0
+        try:
+            bus = ServoControlBus()
+        except ImportError:
+            print("ServoControl library not found. Run this on the Raspberry Pi.")
+            return 2
+        move_to_pose(bus, args.goto, move_ms=args.goto_ms, legs=legs)
+        print("At posture '%s'. Nothing else is sent." % args.goto)
+        return 0
 
     gait = Gait(args.gait, steps=args.steps, stride=args.stride, lift=args.lift)
     gait.set_straight(not args.backward)
@@ -679,7 +803,7 @@ def run_hardware(args):
           (args.gait, args.steps, args.stride, args.lift, args.cycles))
     print("  legs: %s" % ("all" if legs is None else ", ".join(legs)))
     print("  Robot must be propped up or the feet free. Keep power current-limited.")
-    if input("Type YES to continue: ").strip() != "YES":
+    if not _confirm():
         print("Cancelled.")
         return 0
 
@@ -717,7 +841,14 @@ def main(argv=None):
     parser.add_argument("--backward", action="store_true", help="walk backward (hardware mode)")
     parser.add_argument("--legs", default="", help="comma list of legs to move, e.g. RF (hardware mode)")
     parser.add_argument("--move-ms", type=int, default=200, help="servo move time = tick period (hardware)")
+    parser.add_argument("--pose", default=DEFAULT_POSE, choices=POSE_NAMES,
+                        help="posture used as the walking neutral and for stand (default: stand)")
+    parser.add_argument("--goto", default="", choices=[""] + POSE_NAMES,
+                        help="hardware: move to this posture and stop (no walking)")
+    parser.add_argument("--goto-ms", type=int, default=2000, help="move time for --goto (ms)")
     args = parser.parse_args(argv)
+    if args.goto and not args.hardware:
+        parser.error("--goto needs --hardware")
     if args.hardware:
         return run_hardware(args)
     return run_checks(args)

@@ -16,7 +16,14 @@ def dist(a, b):
     return math.dist(a[:2], b[:2])
 
 
-class TestUnits(unittest.TestCase):
+class ResetPose(unittest.TestCase):
+    """Every test starts from the default posture (the active pose is global state)."""
+
+    def setUp(self):
+        sg.set_active_pose(sg.DEFAULT_POSE)
+
+
+class TestUnits(ResetPose):
     def test_pulse_mapping_270_deg(self):
         # raw 0..180 spans the full 270-deg travel over 500..2500 us
         self.assertEqual(sg.pulse_us(0), 500)
@@ -35,7 +42,7 @@ class TestUnits(unittest.TestCase):
         self.assertEqual(sg.CALIBRATION["LF"], (115, 93, 101))
 
 
-class TestKinematics(unittest.TestCase):
+class TestKinematics(ResetPose):
     def test_stand_table_527_1(self):
         worst, rows = sg.check_stand_table()
         self.assertLess(worst, 0.5, rows)
@@ -89,7 +96,7 @@ class TestKinematics(unittest.TestCase):
         self.assertLess(front[0], back[0])
 
 
-class TestGaitStructure(unittest.TestCase):
+class TestGaitStructure(ResetPose):
     def test_all_gaits_pass_check_in_all_directions(self):
         for gait_type in sg.GAIT_SWING_FRACTION:
             for setter in (lambda g: g.set_straight(True),
@@ -246,7 +253,7 @@ class TestGaitMotion(unittest.TestCase):
             self.assertAlmostEqual(max(xs) - min(xs), 0.0, places=6, msg=name)
 
 
-class TestServoOutput(unittest.TestCase):
+class TestServoOutput(ResetPose):
     def test_dry_run_bus_sends_three_servos_per_leg(self):
         bus = sg.DryRunBus()
         g = sg.Gait("tripod")
@@ -285,6 +292,65 @@ class TestServoOutput(unittest.TestCase):
     def test_module_has_servocontrol_name(self):
         # the name exists at module level (None on a PC, the library on the Pi)
         self.assertTrue(hasattr(sg, "ServoControl"))
+
+
+class TestPostures(ResetPose):
+    def test_postures_have_all_legs(self):
+        for pose in sg.POSE_NAMES:
+            self.assertEqual(sorted(sg.POSES[pose]), sorted(sg.LEG_ORDER), pose)
+            for name in sg.LEG_ORDER:
+                self.assertEqual(len(sg.POSES[pose][name]), 3, (pose, name))
+
+    def test_stand_initial_is_the_first_manual_table(self):
+        self.assertEqual(sg.POSES["stand_initial"]["LF"], (115, 110, 40))
+        self.assertEqual(sg.POSES["stand_initial"]["RR"], (103, 105, 35))
+
+    def test_sit_matches_skills_52(self):
+        self.assertEqual(sg.POSES["sit"]["LF"], (115, 80, 65))
+        self.assertEqual(sg.POSES["sit"]["RR"], (101, 75, 60))
+
+    def test_every_posture_reachable_and_in_band(self):
+        bad = [r for r in sg.check_postures() if r[3]]
+        self.assertEqual(bad, [])
+
+    def test_set_active_pose_moves_neutral(self):
+        stand_neutral = sg.LEGS["LF"].neutral
+        sg.set_active_pose("stand_initial")
+        self.assertNotEqual(sg.LEGS["LF"].neutral, stand_neutral)
+        self.assertEqual(sg.LEGS["LF"].pose_raw, sg.POSES["stand_initial"]["LF"])
+        sg.set_active_pose("stand")
+        self.assertEqual(sg.LEGS["LF"].neutral, stand_neutral)
+
+    def test_unknown_pose_rejected(self):
+        with self.assertRaises(ValueError):
+            sg.set_active_pose("lie_down")
+        with self.assertRaises(ValueError):
+            sg.posture_joints("lie_down")
+
+    def test_posture_joints_is_a_copy(self):
+        j = sg.posture_joints("sit")
+        self.assertEqual(j["RF"], sg.POSES["sit"]["RF"])
+        j["RF"] = (0, 0, 0)
+        self.assertEqual(sg.POSES["sit"]["RF"], (102, 80, 60))
+
+    def test_sit_sends_sit_angles(self):
+        bus = sg.DryRunBus()
+        sg.sit(bus, move_ms=0)
+        self.assertEqual(len(bus.commands), 18)
+        self.assertIn((29, sg.pulse_us(102), 0), bus.commands)   # RF coxa on servo 29
+        self.assertIn((31, sg.pulse_us(60), 0), bus.commands)    # RF tibia on servo 31
+
+    def test_stand_follows_active_pose(self):
+        bus = sg.DryRunBus()
+        sg.set_active_pose("stand_initial")
+        sg.stand(bus, move_ms=0)
+        self.assertIn((29, sg.pulse_us(102), 0), bus.commands)   # stand_initial RF coxa 102
+
+    def test_gait_check_from_first_stand(self):
+        sg.set_active_pose("stand_initial")
+        g = sg.Gait("tripod", stride=45, lift=30)
+        g.set_straight(True)
+        self.assertEqual(g.check(cycles=1), [])
 
 
 if __name__ == "__main__":

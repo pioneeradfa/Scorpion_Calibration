@@ -14,6 +14,30 @@ python3 scorpion_gait.py --hardware --legs RF --cycles 1   # real servos, asks f
 `--legs RF` moves one leg only (skills section 10 K: first hardware test on RF).
 Hardware mode stands the robot first, glides to the first gait pose, walks, then returns to stand.
 
+## Postures (stand, initial stand, sit)
+Raw angles per leg, [coxa (shoulder), femur, tibia]. Defined in `POSES` in `scorpion_gait.py`.
+
+| Posture | Source | Status |
+|---|---|---|
+| `stand` (default) | skills 5.1, re-recorded 2026-10-12 | recorded on the robot; walking neutral |
+| `stand_initial` | skills 5.1, superseded first manual stand | IK and band checked; spread 18 mm in height |
+| `sit` | skills 5.2 | IK and band checked; **not verified** (see below) |
+
+- `--pose NAME` sets the walking neutral (`stand` by default). The gait starts from it.
+- `--hardware --goto NAME --legs RF` moves to that posture and stops (asks YES).
+  Walking always starts from the active pose.
+- Python: `sg.sit(bus)`, `sg.stand(bus)`, `sg.move_to_pose(bus, "sit")`, `sg.set_active_pose(...)`.
+
+**Sit is not confirmed.** The §5.4 sit foot positions match the *old scale-1.0* model
+exactly (0.0 mm). So that table was computed before the 270-degree correction and does not
+describe the real sit. The §5.2 raw angles are the commands sent to the servos, so they are
+usable, but the real sit has to be checked by eye:
+1. `--hardware --goto sit --legs RF` (one leg), then the whole robot with the body supported.
+2. Confirm the body rests where you expect. Under the 1.5x model the sit feet are about
+   135-150 mm below the coxa axis, which is lower than the stand (about 80 mm).
+   Your sit may use a different posture, such as resting on the belly (skills 5.6).
+3. Re-record the sit on the robot (like the stand) if it differs. Then update `POSES["sit"]`.
+
 ## 270-degree servo correction (most important change)
 - RDS3218 travels 270 deg. The calibration and the pulse mapping use a 0..180 "raw" scale.
 - Physical angle = 1.5 x raw offset from the straight-leg zero (skills 5.3.1).
