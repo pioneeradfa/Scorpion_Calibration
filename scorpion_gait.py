@@ -320,7 +320,11 @@ GAIT_OFFSET = {
                       "RR": Fraction(1, 3), "LR": 0, "RF": 0},
 }
 
-DEFAULT_STEPS = 18          # N, ticks per cycle (multiple of 6). 18 = 3.6 s tripod cycle at 200 ms ticks
+DEFAULT_STEPS = 18          # N, ticks per cycle for the ripple gaits (multiple of 6)
+# Ticks per cycle, per gait. Tripod is the fast gait: 12 ticks = 2.4 s at 200 ms ticks.
+# Ripples need more ticks: at 12 their joints move about 21 deg per tick.
+GAIT_DEFAULT_STEPS = {"tripod": 12, "ripple_123456": 18, "ripple_654321": 18,
+                      "ripple_135246": 18, "double_ripple": 18}
 DEFAULT_STRIDE = 45.0       # mm, chord of the outermost leg per stance
 DEFAULT_LIFT = 30.0         # mm, swing height
 FAR_ICC_Y = 10000.0         # mm, ICC distance for straight walking (skills 7.1)
@@ -339,7 +343,7 @@ class Gait:
         joints = g.next_joints()          # dict leg -> (coxa, femur, tibia) raw, one tick
     """
 
-    def __init__(self, gait_type="tripod", steps=DEFAULT_STEPS, stride=DEFAULT_STRIDE,
+    def __init__(self, gait_type="tripod", steps=None, stride=DEFAULT_STRIDE,
                  lift=DEFAULT_LIFT, legs=None):
         self.legs = legs or LEGS
         self.stride = float(stride)
@@ -355,7 +359,7 @@ class Gait:
         if gait_type not in GAIT_SWING_FRACTION:
             raise ValueError("Unknown gait %r. Choose from %s" % (gait_type, sorted(GAIT_SWING_FRACTION)))
         if steps is None:
-            steps = getattr(self, "steps", DEFAULT_STEPS)
+            steps = GAIT_DEFAULT_STEPS[gait_type]
         if steps <= 0 or steps % 6 != 0:
             raise ValueError("steps must be a positive multiple of 6 (got %d)" % steps)
         self.gait_type = gait_type
@@ -852,7 +856,8 @@ def run_hardware(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Scorpion gait and IK (270-deg servos).")
     parser.add_argument("--gait", default="tripod", choices=sorted(GAIT_SWING_FRACTION))
-    parser.add_argument("--steps", type=int, default=DEFAULT_STEPS, help="ticks per cycle (multiple of 6)")
+    parser.add_argument("--steps", type=int, default=None,
+                        help="ticks per cycle (multiple of 6). Default: tripod 12, ripples 18")
     parser.add_argument("--stride", type=float, default=DEFAULT_STRIDE, help="stride, mm")
     parser.add_argument("--lift", type=float, default=DEFAULT_LIFT, help="lift height, mm")
     parser.add_argument("--cycles", type=int, default=2, help="cycles to simulate or walk")
@@ -869,6 +874,8 @@ def main(argv=None):
                         help="initial stand moved to before anything else (hardware, default: stand_initial)")
     parser.add_argument("--pose-ms", type=int, default=2000, help="move time for posture moves (ms)")
     args = parser.parse_args(argv)
+    if args.steps is None:
+        args.steps = GAIT_DEFAULT_STEPS[args.gait]
     if args.goto and not args.hardware:
         parser.error("--goto needs --hardware")
     if args.hardware:
