@@ -64,7 +64,7 @@ usable, but the real sit has to be checked by eye:
   recorded stand. Decide which one is right before using that controller.
 
 ## Gait
-- Phase scheme from skills section 6: tripod, ripple (3 orders), double ripple. N = 18 ticks per cycle (was 30). Tripod cycle = 18 x 200 ms = 3.6 s, body about 12.5 mm/s at 45 mm stride. Largest joint change per tick 5.6-5.9 deg; ripple gaits take roughly 2x more per tick.
+- Phase scheme from skills section 6: tripod, ripple (3 orders), double ripple. N = 18 ticks per cycle (was 30). Tripod cycle = 18 x 200 ms = 3.6 s, body about 12.5 mm/s at 45 mm stride. Largest joint change per tick 5.6-5.9 deg; ripple gaits 14.2 deg per tick (9.6 at N = 30), double ripple 8.2 deg. Ripples are slower to follow at this tick rate; tripod is the one to use first.
 - Steering by ICC (skills section 7). Each leg rotates about the ICC by the same angle, so
   the body moves as one rigid unit. Forward = `set_straight(True)`, backward = `set_straight(False)`,
   turn in place = `set_turn_in_place("CCW" | "CW")`.
