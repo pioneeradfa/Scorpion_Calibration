@@ -109,7 +109,7 @@ class TestGaitStructure(ResetPose):
 
     def test_swing_count_per_tick(self):
         expect = {"tripod": 3, "ripple_123456": 1, "ripple_654321": 1,
-                  "ripple_135246": 1, "double_ripple": 2}
+                  "ripple_135246": 1, "double_ripple": 2, "caterpillar": 1}
         for gait_type, n in expect.items():
             g = sg.Gait(gait_type)
             for t in range(g.steps):
@@ -448,6 +448,100 @@ class TestOneStep(ResetPose):
         rc, calls = self._run(["--hardware", "--legs", "RF"])
         self.assertEqual(rc, 0)
         self.assertEqual(len(calls), 16 * 3)                         # RF only: 3 servos per move
+
+    def test_cancel_sends_nothing(self):
+        rc, calls = self._run(["--hardware"], answer="no")
+        self.assertEqual(rc, 0)
+        self.assertEqual(calls, [])
+
+
+class TestGaitFamilies(ResetPose):
+    def _swing_order(self, g):
+        order = []
+        for t in range(g.steps):
+            for n in sg.LEG_ORDER:
+                if g._is_swing(n, t) and n not in order:
+                    order.append(n)
+        return order
+
+    def test_ripple_orders(self):
+        g = sg.Gait("ripple_123456", steps=30)
+        self.assertEqual(self._swing_order(g), ["LF", "RF", "LM", "RM", "LR", "RR"])
+        g = sg.Gait("ripple_654321", steps=30)
+        self.assertEqual(self._swing_order(g), ["RR", "LR", "RM", "LM", "RF", "LF"])
+        g = sg.Gait("ripple_135246", steps=30)
+        self.assertEqual(self._swing_order(g), ["LF", "LM", "LR", "RF", "RM", "RR"])   # legs 1,3,5,2,4,6
+
+    def test_caterpillar_order(self):
+        g = sg.Gait("caterpillar", steps=30)
+        self.assertEqual(self._swing_order(g), ["LR", "LM", "LF", "RF", "RM", "RR"])
+
+    def test_caterpillar_and_ripples_pass_check(self):
+        for gt in ("caterpillar", "ripple_123456", "ripple_654321", "ripple_135246", "double_ripple"):
+            for setter in (lambda g: g.set_straight(True), lambda g: g.set_turn_in_place("CW")):
+                g = sg.Gait(gt)
+                setter(g)
+                self.assertEqual(g.check(cycles=2), [], gt)
+
+    def test_default_steps(self):
+        self.assertEqual(sg.GAIT_DEFAULT_STEPS["tripod"], 12)
+        self.assertEqual(sg.GAIT_DEFAULT_STEPS["ripple_123456"], 30)
+        self.assertEqual(sg.GAIT_DEFAULT_STEPS["caterpillar"], 30)
+        self.assertEqual(sg.GAIT_DEFAULT_STEPS["double_ripple"], 24)
+        for gt, n in sg.GAIT_DEFAULT_STEPS.items():
+            self.assertEqual(sg.Gait(gt).steps, n, gt)
+
+    def test_ripple_per_tick_joint_speed_is_moderate(self):
+        g = sg.Gait("ripple_123456", steps=30, stride=45, lift=30)
+        g.set_straight(True)
+        self.assertLess(g.worst_joint_step(cycles=1), 11.0)
+
+
+class TestWalkScript(ResetPose):
+    """walk.py: dry run sends nothing; hardware runs the full sequence with the requested options."""
+
+    def _run(self, argv, answer="yes"):
+        from unittest import mock
+        import walk
+        calls = []
+        stub = types.ModuleType("ServoControl")
+        stub.setPWMServoMove = lambda sid, pulse, ms: calls.append((sid, pulse, ms))
+        saved = sg.ServoControl
+        sg.ServoControl = stub
+        saved_glide = walk.GLIDE_MS
+        walk.GLIDE_MS = 0
+        try:
+            with mock.patch("builtins.input", return_value=answer):
+                rc = walk.main(argv)
+        finally:
+            sg.ServoControl = saved
+            walk.GLIDE_MS = saved_glide
+        return rc, calls
+
+    def test_dry_run_sends_nothing(self):
+        rc, calls = self._run([])
+        self.assertEqual(rc, 0)
+        self.assertEqual(calls, [])
+
+    def test_bad_steps_rejected(self):
+        with self.assertRaises(SystemExit):
+            self._run(["--steps", "7"])
+
+    def test_tripod_one_cycle_sequence(self):
+        rc, calls = self._run(["--hardware", "--pose-ms", "0", "--tick-ms", "20"])
+        self.assertEqual(rc, 0)
+        # initial stand, walking stand, glide, 12 ticks, walking stand again = 16 moves
+        self.assertEqual(len(calls), 16 * 18)
+
+    def test_caterpillar_two_cycles_timing_and_legs(self):
+        rc, calls = self._run(["--hardware", "--gait", "caterpillar", "--cycles", "2",
+                               "--steps", "18", "--legs", "RF", "--pose-ms", "0", "--tick-ms", "20"])
+        self.assertEqual(rc, 0)
+        # RF only (3 servos): initial, walking, glide, 2 x 18 ticks, walking = 39 moves
+        self.assertEqual(len(calls), (1 + 1 + 1 + 2 * 18 + 1) * 3)
+        # the tick period passed to the servos is the --tick-ms value
+        tick_moves = [c for c in calls if c[2] == 20]
+        self.assertTrue(tick_moves)
 
     def test_cancel_sends_nothing(self):
         rc, calls = self._run(["--hardware"], answer="no")

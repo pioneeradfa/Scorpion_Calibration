@@ -3,11 +3,15 @@
 Files
 - `scorpion_gait.py`     leg IK/FK for 270-degree servos, `Gait` class, servo output, CLI
 - `walk_one_step.py`     one complete tripod step (one full cycle) with the same safe sequence
+- `walk.py`              any gait, any number of cycles, tick timing (`--tick-ms`), dry run by default
 - `test_scorpion_gait.py` unit tests (no hardware): `python3 -m unittest -v test_scorpion_gait`
 - Reference: `skills_12oct.md`
 
 ## Run
 ```
+python3 walk.py --gait ripple_123456 --cycles 2     # dry run: plan and one cycle of angles
+python3 walk.py --hardware --legs RF --cycles 1        # one leg, one cycle, asks YES
+python3 walk.py --hardware --gait tripod --cycles 3 --tick-ms 250
 python3 walk_one_step.py                    # dry run: prints the 12-tick step
 python3 walk_one_step.py --hardware --legs RF   # one leg, asks YES
 python3 walk_one_step.py --hardware             # full robot, asks YES
@@ -70,7 +74,7 @@ usable, but the real sit has to be checked by eye:
   recorded stand. Decide which one is right before using that controller.
 
 ## Gait
-- Phase scheme from skills section 6: tripod, ripple (3 orders), double ripple. Ticks per cycle: tripod 12 (2.4 s at 200 ms ticks, largest joint change 8.2 deg per tick); ripples and double ripple 18 (3.6 s; ripple 14.2 deg per tick, double ripple 8.2). Set per gait in GAIT_DEFAULT_STEPS; --steps overrides.
+- Gaits (skills section 6 scheme): tripod, ripple_123456, ripple_654321, ripple_135246, double_ripple, caterpillar. Steps per cycle (`GAIT_DEFAULT_STEPS`): tripod 12 (2.4 s at 200 ms, 8.2 deg per tick), ripples and caterpillar 30 (6.0 s, 9.6 deg per tick), double ripple 24 (4.8 s, 6.3 deg per tick). `--steps` overrides. Caterpillar = one leg at a time in the order LR, LM, LF, RF, RM, RR (defined here; the old robot's `catapilar()` was an empty stub). Ripple orders: 123456 = LF RF LM RM LR RR; 654321 = RR LR RM LM RF LF; 135246 = LF LM LR RF RM RR.
 - Steering by ICC (skills section 7). Each leg rotates about the ICC by the same angle, so
   the body moves as one rigid unit. Forward = `set_straight(True)`, backward = `set_straight(False)`,
   turn in place = `set_turn_in_place("CCW" | "CW")`.

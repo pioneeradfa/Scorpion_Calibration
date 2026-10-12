@@ -304,6 +304,7 @@ GAIT_SWING_FRACTION = {
     "ripple_654321": Fraction(1, 6),
     "ripple_135246": Fraction(1, 6),
     "double_ripple": Fraction(1, 3),
+    "caterpillar": Fraction(1, 6),
 }
 
 # Phase offset of each leg (fraction of the cycle), skills 6.3
@@ -318,13 +319,20 @@ GAIT_OFFSET = {
                       "RM": Fraction(1, 6), "LR": Fraction(3, 6), "RR": 0},
     "double_ripple": {"LF": Fraction(2, 3), "RM": Fraction(2, 3), "LM": Fraction(1, 3),
                       "RR": Fraction(1, 3), "LR": 0, "RF": 0},
+    # caterpillar: one leg lifts at a time, in this order (the wave runs along the body):
+    # left rear -> left front, then right front -> right rear. Offset of the k-th leg is (5 - k) / 6,
+    # the same rule as ripple_123456 (LF, RF, LM, RM, LR, RR).
+    "caterpillar": {"LR": Fraction(5, 6), "LM": Fraction(4, 6), "LF": Fraction(3, 6),
+                    "RF": Fraction(2, 6), "RM": Fraction(1, 6), "RR": 0},
 }
 
 DEFAULT_STEPS = 18          # N, ticks per cycle for the ripple gaits (multiple of 6)
-# Ticks per cycle, per gait. Tripod is the fast gait: 12 ticks = 2.4 s at 200 ms ticks.
-# Ripples need more ticks: at 12 their joints move about 21 deg per tick.
-GAIT_DEFAULT_STEPS = {"tripod": 12, "ripple_123456": 18, "ripple_654321": 18,
-                      "ripple_135246": 18, "double_ripple": 18}
+# Ticks per cycle, per gait (multiple of 6). Measured largest joint change per tick at 45 mm stride:
+#   tripod 12 -> 8.2 deg (2.4 s at 200 ms).  Ripples and caterpillar need more ticks:
+#   at 18 they move 14.2 deg per tick, at 30 they move 9.6 deg (6.0 s at 200 ms).
+#   Double ripple at 24 moves 6.3 deg per tick.
+GAIT_DEFAULT_STEPS = {"tripod": 12, "ripple_123456": 30, "ripple_654321": 30,
+                      "ripple_135246": 30, "double_ripple": 24, "caterpillar": 30}
 DEFAULT_STRIDE = 45.0       # mm, chord of the outermost leg per stance
 DEFAULT_LIFT = 30.0         # mm, swing height
 FAR_ICC_Y = 10000.0         # mm, ICC distance for straight walking (skills 7.1)
@@ -865,7 +873,8 @@ def main(argv=None):
     parser.add_argument("--hardware", action="store_true", help="send commands to the real servos")
     parser.add_argument("--backward", action="store_true", help="walk backward (hardware mode)")
     parser.add_argument("--legs", default="", help="comma list of legs to move, e.g. RF (hardware mode)")
-    parser.add_argument("--move-ms", type=int, default=200, help="servo move time = tick period (hardware)")
+    parser.add_argument("--move-ms", "--tick-ms", dest="move_ms", type=int, default=200,
+                        help="tick period = servo move time, ms (hardware, default 200)")
     parser.add_argument("--pose", default=DEFAULT_POSE, choices=POSE_NAMES,
                         help="posture used as the walking neutral and for stand (default: stand)")
     parser.add_argument("--goto", default="", choices=[""] + POSE_NAMES,
