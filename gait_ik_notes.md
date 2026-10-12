@@ -2,10 +2,16 @@
 
 Files
 - `scorpion_gait.py`     leg IK/FK for 270-degree servos, `Gait` class, servo output, CLI
+- `walk_one_step.py`     one complete tripod step (one full cycle) with the same safe sequence
 - `test_scorpion_gait.py` unit tests (no hardware): `python3 -m unittest -v test_scorpion_gait`
 - Reference: `skills_12oct.md`
 
 ## Run
+```
+python3 walk_one_step.py                    # dry run: prints the 12-tick step
+python3 walk_one_step.py --hardware --legs RF   # one leg, asks YES
+python3 walk_one_step.py --hardware             # full robot, asks YES
+```
 ```
 python3 scorpion_gait.py                          # checks (stand table, IK round trip, gait)
 python3 scorpion_gait.py --gait ripple_123456 --table

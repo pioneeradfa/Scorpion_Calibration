@@ -406,5 +406,54 @@ class TestHardwareSequence(ResetPose):
                                      (31, sg.pulse_us(60), 0)])
 
 
+class TestOneStep(ResetPose):
+    """walk_one_step: initial stand, walking stand, glide, one full cycle, walking stand."""
+
+    def _run(self, argv, answer="yes"):
+        from unittest import mock
+        import walk_one_step as wos
+        calls = []
+        stub = types.ModuleType("ServoControl")
+        stub.setPWMServoMove = lambda sid, pulse, ms: calls.append((sid, pulse, ms))
+        saved = sg.ServoControl
+        sg.ServoControl = stub
+        saved_ms = (wos.POSE_MS, wos.GLIDE_MS, wos.TICK_MS)
+        wos.POSE_MS, wos.GLIDE_MS, wos.TICK_MS = 0, 0, 0
+        try:
+            with mock.patch("builtins.input", return_value=answer):
+                rc = wos.main(argv)
+        finally:
+            sg.ServoControl = saved
+            wos.POSE_MS, wos.GLIDE_MS, wos.TICK_MS = saved_ms
+        return rc, calls
+
+    def test_dry_run_sends_nothing(self):
+        rc, calls = self._run([])
+        self.assertEqual(rc, 0)
+        self.assertEqual(calls, [])
+
+    def test_full_step_sequence(self):
+        rc, calls = self._run(["--hardware"])
+        self.assertEqual(rc, 0)
+        # initial stand + walking stand + glide + 12 ticks + back to walking stand = 16 moves x 18 servos
+        self.assertEqual(len(calls), 16 * 18)
+        def expect(pose):
+            bus = sg.DryRunBus()
+            bus.send(sg.posture_joints(pose), 0)
+            return bus.commands
+        self.assertEqual(calls[:18], expect(sg.START_POSE))          # first: initial stand
+        self.assertEqual(calls[-18:], expect(sg.DEFAULT_POSE))       # last: walking stand
+
+    def test_one_leg_step_sequence(self):
+        rc, calls = self._run(["--hardware", "--legs", "RF"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(calls), 16 * 3)                         # RF only: 3 servos per move
+
+    def test_cancel_sends_nothing(self):
+        rc, calls = self._run(["--hardware"], answer="no")
+        self.assertEqual(rc, 0)
+        self.assertEqual(calls, [])
+
+
 if __name__ == "__main__":
     unittest.main()
