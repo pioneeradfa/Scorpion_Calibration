@@ -130,6 +130,7 @@ POSES = {
 }
 POSE_NAMES = sorted(POSES)
 DEFAULT_POSE = "stand"
+START_POSE = "stand_initial"   # hardware: always moved to first
 
 # Recorded stand, kept under its old name for existing code
 STAND_RAW = POSES["stand"]
@@ -753,55 +754,57 @@ def run_checks(args):
 
 
 def _confirm():
-    """Asks for YES on the console. Anything else (or no input) cancels."""
+    """Asks for YES on the console. yes/y in any case also count. Anything else cancels."""
     try:
-        return input("Type YES to continue: ").strip() == "YES"
+        return input("Type YES to continue: ").strip().lower() in ("yes", "y")
     except EOFError:
         return False
 
 
+def _parse_legs(text):
+    """'RF,RM' -> ['RF', 'RM'] (None = all legs). Raises ValueError on an unknown leg."""
+    if not text:
+        return None
+    legs = [s.strip().upper() for s in text.split(",") if s.strip()]
+    for name in legs:
+        if name not in LEGS:
+            raise ValueError("Unknown leg %s" % name)
+    return legs
+
+
 def run_hardware(args):
-    if args.legs:
-        legs = [s.strip().upper() for s in args.legs.split(",") if s.strip()]
-        for name in legs:
-            if name not in LEGS:
-                print("Unknown leg %s" % name)
-                return 2
-    else:
-        legs = None
+    """Real servos. Always starts at the initial stand (START_POSE), then does the action:
+    --goto NAME moves to that posture and stops; otherwise the gait walks and returns to
+    the active stand."""
+    try:
+        legs = _parse_legs(args.legs)
+    except ValueError as exc:
+        print(exc)
+        return 2
 
     set_active_pose(args.pose)
+    start = args.start_pose
+    leg_text = "all" if legs is None else ", ".join(legs)
 
     if args.goto:
-        # only move to one posture, then stop (no walking)
-        print("About to move the REAL servos to posture '%s'." % args.goto)
-        print("  legs: %s" % ("all" if legs is None else ", ".join(legs)))
-        print("  Hold the robot or keep the feet free. Keep power current-limited.")
-        if not _confirm():
-            print("Cancelled.")
-            return 0
-        try:
-            bus = ServoControlBus()
-        except ImportError:
-            print("ServoControl library not found. Run this on the Raspberry Pi.")
-            return 2
-        move_to_pose(bus, args.goto, move_ms=args.goto_ms, legs=legs)
-        print("At posture '%s'. Nothing else is sent." % args.goto)
-        return 0
-
-    gait = Gait(args.gait, steps=args.steps, stride=args.stride, lift=args.lift)
-    gait.set_straight(not args.backward)
-    problems = gait.check(cycles=args.cycles)
-    if problems:
-        print("Simulation check failed. Not walking.")
-        for p in problems[:10]:
-            print("  " + p)
-        return 1
+        action = "then move to posture '%s' and stop (no walking)" % args.goto
+        gait = None
+    else:
+        gait = Gait(args.gait, steps=args.steps, stride=args.stride, lift=args.lift)
+        gait.set_straight(not args.backward)
+        problems = gait.check(cycles=args.cycles)
+        if problems:
+            print("Simulation check failed. Not moving the robot.")
+            for p in problems[:10]:
+                print("  " + p)
+            return 1
+        action = "then walk %s, %d cycle(s), stride %.0f mm, lift %.0f mm, returning to '%s'" % (
+            args.gait, args.cycles, args.stride, args.lift, args.pose)
 
     print("About to move the REAL servos.")
-    print("  gait %s, steps %d, stride %.0f mm, lift %.0f mm, cycles %d" %
-          (args.gait, args.steps, args.stride, args.lift, args.cycles))
-    print("  legs: %s" % ("all" if legs is None else ", ".join(legs)))
+    print("  1. move to the initial stand '%s' (%d ms)" % (start, args.pose_ms))
+    print("  2. " + action)
+    print("  legs: %s" % leg_text)
     print("  Robot must be propped up or the feet free. Keep power current-limited.")
     if not _confirm():
         print("Cancelled.")
@@ -814,8 +817,20 @@ def run_hardware(args):
         return 2
 
     try:
-        stand(bus, legs=legs)
-        # glide from the stand into the first gait pose (avoids a jump at the start)
+        # 1. initial stand first, before any other motion
+        move_to_pose(bus, start, move_ms=args.pose_ms, legs=legs)
+        print("At initial stand '%s'." % start)
+
+        if gait is None:
+            # 2a. posture only
+            if args.goto != start:
+                move_to_pose(bus, args.goto, move_ms=args.pose_ms, legs=legs)
+            print("At posture '%s'. Nothing else is sent." % args.goto)
+            return 0
+
+        # 2b. walk: go to the walking neutral, glide into the first gait pose, walk
+        if args.pose != start:
+            move_to_pose(bus, args.pose, move_ms=args.pose_ms, legs=legs)
         bus.send(gait.joints_at(0), move_ms=1000, legs=legs)
         time.sleep(1.0)
         walk(gait, bus, cycles=args.cycles, move_ms=args.move_ms, legs=legs)
@@ -824,8 +839,13 @@ def run_hardware(args):
     except GaitError as exc:
         print("\nGait stopped: %s" % exc)
     finally:
-        stand(bus, legs=legs)
-        print("Back to the stand pose.")
+        # walking: return to the active stand. --goto: stay where the posture move ended.
+        if gait is not None:
+            try:
+                move_to_pose(bus, args.pose, move_ms=args.pose_ms, legs=legs)
+                print("Back to posture '%s'." % args.pose)
+            except Exception as exc:  # noqa: BLE001  (never hide the first error)
+                print("Could not return to posture '%s': %s" % (args.pose, exc))
     return 0
 
 
@@ -845,7 +865,9 @@ def main(argv=None):
                         help="posture used as the walking neutral and for stand (default: stand)")
     parser.add_argument("--goto", default="", choices=[""] + POSE_NAMES,
                         help="hardware: move to this posture and stop (no walking)")
-    parser.add_argument("--goto-ms", type=int, default=2000, help="move time for --goto (ms)")
+    parser.add_argument("--start-pose", default=START_POSE, choices=POSE_NAMES,
+                        help="initial stand moved to before anything else (hardware, default: stand_initial)")
+    parser.add_argument("--pose-ms", type=int, default=2000, help="move time for posture moves (ms)")
     args = parser.parse_args(argv)
     if args.goto and not args.hardware:
         parser.error("--goto needs --hardware")

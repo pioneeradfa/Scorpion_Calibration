@@ -12,7 +12,13 @@ python3 scorpion_gait.py --gait ripple_123456 --table
 python3 scorpion_gait.py --hardware --legs RF --cycles 1   # real servos, asks for YES
 ```
 `--legs RF` moves one leg only (skills section 10 K: first hardware test on RF).
-Hardware mode stands the robot first, glides to the first gait pose, walks, then returns to stand.
+
+Hardware mode, in this order (each step is announced before the YES prompt):
+1. Move to the initial stand `stand_initial` (`--pose-ms`, default 2000 ms). Always first.
+2a. Walking: move to the walking neutral (`--pose`, default `stand`), glide to the first gait
+    pose, walk `--cycles`, then return to the walking neutral.
+2b. `--goto NAME`: move to that posture and stop. It stays there (no return move).
+The prompt accepts `YES`, `yes` or `y`. Any other answer cancels with no motion.
 
 ## Postures (stand, initial stand, sit)
 Raw angles per leg, [coxa (shoulder), femur, tibia]. Defined in `POSES` in `scorpion_gait.py`.

@@ -353,5 +353,58 @@ class TestPostures(ResetPose):
         self.assertEqual(g.check(cycles=1), [])
 
 
+class TestHardwareSequence(ResetPose):
+    """run_hardware with a stub ServoControl: the initial stand must be the first motion."""
+
+    def _run(self, argv, answer="yes"):
+        from unittest import mock
+        calls = []
+        stub = types.ModuleType("ServoControl")
+        stub.setPWMServoMove = lambda sid, pulse, ms: calls.append((sid, pulse, ms))
+        saved = sg.ServoControl
+        sg.ServoControl = stub
+        try:
+            with mock.patch("builtins.input", return_value=answer):
+                rc = sg.main(argv)
+        finally:
+            sg.ServoControl = saved
+        return rc, calls
+
+    def test_initial_stand_is_first_then_walk_returns_to_stand(self):
+        rc, calls = self._run(["--hardware", "--legs", "RF", "--cycles", "1",
+                               "--pose-ms", "0", "--move-ms", "0"])
+        self.assertEqual(rc, 0)
+        first_rf = [c for c in calls[:3]]
+        # stand_initial RF = (102, 110, 35) on servos 29, 30, 31
+        self.assertEqual(first_rf, [(29, sg.pulse_us(102), 0),
+                                    (30, sg.pulse_us(110), 0),
+                                    (31, sg.pulse_us(35), 0)])
+        # walking returns to the active stand (recorded): RF = (97, 114, 27)
+        self.assertEqual(calls[-3:], [(29, sg.pulse_us(97), 0),
+                                      (30, sg.pulse_us(114), 0),
+                                      (31, sg.pulse_us(27), 0)])
+
+    def test_yes_in_any_case_is_accepted(self):
+        rc, calls = self._run(["--hardware", "--legs", "RF", "--cycles", "1",
+                               "--pose-ms", "0", "--move-ms", "0"], answer="Yes")
+        self.assertEqual(rc, 0)
+        self.assertTrue(calls)
+
+    def test_no_answer_sends_nothing(self):
+        rc, calls = self._run(["--hardware", "--legs", "RF", "--cycles", "1"], answer="no")
+        self.assertEqual(rc, 0)
+        self.assertEqual(calls, [])
+
+    def test_goto_moves_initial_stand_then_target_only(self):
+        rc, calls = self._run(["--hardware", "--goto", "sit", "--legs", "RF",
+                               "--pose-ms", "0"])
+        self.assertEqual(rc, 0)
+        # 3 servos to stand_initial, then 3 to sit (RF sit = (102, 80, 60)); nothing after
+        self.assertEqual(len(calls), 6)
+        self.assertEqual(calls[3:], [(29, sg.pulse_us(102), 0),
+                                     (30, sg.pulse_us(80), 0),
+                                     (31, sg.pulse_us(60), 0)])
+
+
 if __name__ == "__main__":
     unittest.main()
