@@ -320,7 +320,7 @@ GAIT_OFFSET = {
                       "RR": Fraction(1, 3), "LR": 0, "RF": 0},
 }
 
-DEFAULT_STEPS = 30          # N, ticks per cycle (multiple of 6)
+DEFAULT_STEPS = 18          # N, ticks per cycle (multiple of 6). 18 = 3.6 s tripod cycle at 200 ms ticks
 DEFAULT_STRIDE = 45.0       # mm, chord of the outermost leg per stance
 DEFAULT_LIFT = 30.0         # mm, swing height
 FAR_ICC_Y = 10000.0         # mm, ICC distance for straight walking (skills 7.1)
