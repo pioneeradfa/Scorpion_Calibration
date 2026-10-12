@@ -75,18 +75,19 @@ Once you re-calibrate with the corrected mapping in place, set the scale to 1.0.
 ## 5b. Second reversal, now hardware-settled: TIBIA_SIGN = -1
 
 The first correction set TIBIA_SIGN = +1 because the old inline comment
-described +1.  The hand-calibrated STAND pose (POSITIONS["stand"], RF legacy
-102/110/35 = physical 153.0/165.0/52.5, the pose in the bench photo) then
-contradicted it: the calibration pose is the leg DEAD STRAIGHT, so a standing
-knee bend of 88.5 deg must lie on one side of cal_tibia = 141.0, and stand lies
-88.5 deg below it.  Under +1 the same pose solves to a foot 146 mm ABOVE the
-body plane; under -1 it solves to 76.8 mm below with the knee 35 mm above the
-coxa plane, which is what the photo shows.  A hinge only bends one way, so
-decreasing raw tibia bends the knee.  Flipped to -1 together with:
-leg_reach_limits() (phi_max = cal_tibia - 2 now), the self-test expectations
-(the d-based prediction is the oracle, not a memorised sign), WALKING_NOTES
-section 4 (planted 78.14 / lifted 53.71, delta -24.43), and a new
-RF_LEG_IK.md carrying the full derivation and the photo cross-check.
+described +1.  The hand-calibrated STAND pose (`leg_stand.json` /
+`POSITIONS["stand"]`, RF legacy 97/114/27 = physical 145.5/171.0/40.5; earlier
+table 102/110/35 = 153.0/165.0/52.5) then contradicted it: the calibration pose
+is the leg DEAD STRAIGHT, so a standing knee bend of 100.5 deg must lie on one
+side of cal_tibia = 141.0, and stand lies 100.5 deg below it.  Under +1 the
+same pose solves to a foot 128.5 mm ABOVE the body plane; under -1 it solves to
+78.7 mm below with the knee 40.4 mm above the coxa plane, which is what the
+bench robot shows.  A hinge only bends one way, so decreasing raw tibia bends
+the knee.  Flipped to -1 together with: leg_reach_limits() (phi_max = cal_tibia
+- 2 now), the self-test expectations (the d-based prediction is the oracle, not
+a memorised sign), WALKING_NOTES section 4 (planted 78.14 / lifted 53.71, delta
+-24.43), and a new RF_LEG_IK.md carrying the full derivation and the photo
+cross-check.
 
 ## 5. Corrections to the previous version of this file
 

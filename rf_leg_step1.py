@@ -38,7 +38,7 @@ MX, MY = ik.MOUNT_POS[LEG]          # RF coxa axis in body frame: (115, -60)
 CAL = ik.CALIBRATION[LEG]           # {'coxa': 98, 'femur': 88, 'tibia': 94}
 
 # User-calibrated poses (copied from stand_sit_walk_tail_claw_belly.py)
-STAND_RF = (102, 110, 35)
+STAND_RF = (97, 114, 27)
 SIT_RF = (102, 80, 60)
 
 # Dry-run swing settings (defaults to review, not yet hardware-tested)

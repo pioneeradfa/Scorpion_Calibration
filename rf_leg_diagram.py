@@ -66,7 +66,7 @@ ax.annotate("", xy=(footS[0] + 14, footS[1]), xytext=(footS[0] + 14, 0), arrowpr
 ax.text(footS[0] + 17, footS[1] / 2, "body height\n%.1f mm" % abs(zS), color="tab:red", fontsize=8.5)
 ax.text(6, 52, "femur %+.0f deg above horizontal" % elS, color="tab:blue", fontsize=9.5, weight="bold")
 ax.text(kneeS[0] + 7, kneeS[1] - 24, "knee bend %.1f$^\\circ$\n(interior %.1f$^\\circ$)" % (phS, 180 - phS), color="tab:blue", fontsize=9)
-ax.text(8, -118, "STAND  raw %.1f / %.1f / %.1f   (your table 102/110/35 x1.5)" % STAND, color="tab:blue", fontsize=10, weight="bold")
+ax.text(8, -118, "STAND  raw %.1f / %.1f / %.1f   (your table 97/114/27 x1.5)" % STAND, color="tab:blue", fontsize=10, weight="bold")
 ax.text(8, -132, "SIT       raw %.1f / %.1f / %.1f    (your table 102/80/60 x1.5)   note: computes HIGHER than stand - see RF_LEG_IK.md" % SIT, color="tab:orange", fontsize=9)
 ax.set_xlim(-20, 285); ax.set_ylim(-150, 75)
 ax.set_xlabel("mm outboard from coxa axis"); ax.set_ylabel("mm up")
@@ -84,11 +84,12 @@ for leg, (mx, my) in mounts.items():
     ax.text(mx, my + (9 if my > 0 else -13), leg, ha="center", fontsize=8.5, color="0.4")
 mx, my = mounts["RF"]
 bx, by = mx + vS, my - uS
-ax.plot([mx, mx + 18 * math.sin(math.radians(6))], [my, my - 18 * math.cos(math.radians(6))], color="tab:blue", lw=2)
+yaw_s = STAND[0] - CAL["coxa"]
+ax.plot([mx, mx + 18 * math.sin(math.radians(yaw_s))], [my, my - 18 * math.cos(math.radians(yaw_s))], color="tab:blue", lw=2)
 ax.plot([mx, bx], [my, by], color="tab:blue", lw=2, ls="--")
 ax.plot(bx, by, "s", ms=9, color="tab:blue")
 ax.text(bx + 8, by - 6, "RF foot at stand\nbody (%.0f, %.0f)" % (bx, by), color="tab:blue", fontsize=9)
-ax.annotate("yaw %+.0f$^\\circ$ fwd" % (STAND[0] - CAL["coxa"]), (mx + 6, my - 24), (mx + 34, my - 40), fontsize=9,
+ax.annotate("yaw %+.1f$^\\circ$" % yaw_s, (mx, my - 24), (mx + 34, my - 40), fontsize=9,
             color="tab:blue", arrowprops=dict(arrowstyle="-", color="tab:blue", lw=0.8))
 ax.annotate("", xy=(bx, by), xytext=(bx, -by), arrowprops=dict(arrowstyle="<->", color="tab:red", lw=1.1))
 ax.text(bx + 10, 0, "stance width\n%.0f mm" % (2 * abs(by)), color="tab:red", fontsize=9, va="center")

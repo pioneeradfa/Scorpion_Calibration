@@ -32,8 +32,8 @@ RIGHT_LEGS = ["RF", "RM", "RR"]
 
 # User-calibrated poses (from stand_sit_walk_tail_claw_belly.py)
 POSES = {
-    "stand": {"RF": (102, 110, 35), "RM": (90, 110, 35), "RR": (103, 105, 35)},
-    "sit":   {"RF": (102, 80, 60),  "RM": (90, 80, 60),  "RR": (101, 75, 60)},
+    "stand": {"RF": (97, 114, 27), "RM": (88, 117, 19), "RR": (101, 110, 25)},
+    "sit":   {"RF": (102, 80, 60), "RM": (90, 80, 60),  "RR": (101, 75, 60)},
 }
 
 SWING_STRIDE = 30.0   # mm forward

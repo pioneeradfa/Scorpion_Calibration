@@ -300,18 +300,18 @@ def stand_pose(cfg: GaitConfig) -> Dict[int, float]:
 
 
 # The hand-calibrated standing pose, in TRUE physical degrees.  This is
-# POSITIONS["stand"] from stand_sit_walk_tail_claw_belly.py (legacy /180 command
-# units) multiplied by LEGACY_CALIBRATION_SCALE, i.e. the pose the robot is
-# known to stand in on the bench -- see RF_LEG_IK.md.  It is the initial
+# leg_stand.json / POSITIONS["stand"] in stand_sit_walk_tail_claw_belly.py
+# (legacy /180 command units) multiplied by LEGACY_CALIBRATION_SCALE, i.e. the
+# pose the robot stands in on the bench -- see RF_LEG_IK.md.  It is the initial
 # posture before walking; the gait itself runs from the (taller, narrower)
 # stance in GaitConfig, reached by a short transition from here.
 USER_STAND_PHYS: Dict[str, Tuple[float, float, float]] = {
-    "RF": (153.0, 165.0, 52.5),   # legacy 102/110/35
-    "RM": (135.0, 165.0, 52.5),   # legacy  90/110/35
-    "RR": (154.5, 157.5, 52.5),   # legacy 103/105/35
-    "LF": (172.5, 165.0, 60.0),   # legacy 115/110/40
-    "LM": (135.0, 165.0, 30.0),   # legacy  90/110/20
-    "LR": (135.0, 165.0, 45.0),   # legacy  90/110/30
+    "RF": (145.5, 171.0, 40.5),   # legacy  97/114/27
+    "RM": (132.0, 175.5, 28.5),   # legacy  88/117/19
+    "RR": (151.5, 165.0, 37.5),   # legacy 101/110/25
+    "LR": (133.5, 165.0, 45.0),   # legacy  89/110/30
+    "LM": (135.0, 168.0, 33.0),   # legacy  90/112/22
+    "LF": (169.5, 174.0, 58.5),   # legacy 113/116/39
 }
 
 
