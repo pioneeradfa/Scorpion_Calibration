@@ -4,6 +4,8 @@ Files
 - `scorpion_gait.py`     leg IK/FK for 270-degree servos, `Gait` class, servo output, CLI
 - `walk_one_step.py`     one complete tripod step (one full cycle) with the same safe sequence
 - `walk.py`              any gait, any number of cycles, tick timing (`--tick-ms`), dry run by default
+- `walk_gui.py`          browser control panel: gait, speed, steps, cycles, direction, legs; live plan and gait picture; Walk / Stop. Standard library only. `--host 127.0.0.1` (default, this machine) or `0.0.0.0` (network)
+- `test_walk_gui.py`      tests for the panel (request checks, plan, walk with a fake bus, stop, HTTP)
 - `test_scorpion_gait.py` unit tests (no hardware): `python3 -m unittest -v test_scorpion_gait`
 - Reference: `skills_12oct.md`
 
@@ -12,6 +14,8 @@ Files
 python3 walk.py --gait ripple_123456 --cycles 2     # dry run: plan and one cycle of angles
 python3 walk.py --hardware --legs RF --cycles 1        # one leg, one cycle, asks YES
 python3 walk.py --hardware --gait tripod --cycles 3 --tick-ms 250
+python3 walk_gui.py                                     # control panel at http://localhost:8000
+python3 walk_gui.py --host 0.0.0.0                       # also from another computer on the network
 python3 walk_one_step.py                    # dry run: prints the 12-tick step
 python3 walk_one_step.py --hardware --legs RF   # one leg, asks YES
 python3 walk_one_step.py --hardware             # full robot, asks YES
