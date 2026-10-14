@@ -172,5 +172,75 @@ class TestCommandLine(unittest.TestCase):
         self.assertIn("cannot be combined", err.getvalue())
 
 
+class TestSimulatedBodyPath(unittest.TestCase):
+    """Body pose worked out from the planted feet (icc_sim.py). The gait's own model is the reference,
+    so this checks that the body really follows the requested ICC. Not a test on the robot."""
+
+    def setUp(self):
+        sg.set_active_pose("stand")
+
+    def _run(self, gait, cycles=2):
+        import icc_sim
+        return icc_sim.path_stats(gait, cycles)
+
+    def test_stance_feet_fit_a_rigid_motion(self):
+        # if the ICC model is right, the planted feet are exactly a rigid motion each step
+        for side in ("left", "right"):
+            for backward in (False, True):
+                with self.subTest(side=side, backward=backward):
+                    g = it.make_curve_gait("tripod", 12, 45, 30, 300, side, backward)
+                    self.assertLess(self._run(g)["fit_rms_mm"], 1e-6)
+        g = it.IccTurnGait("tripod", steps=12, stride=45, lift=30)
+        g.set_turn_in_place("CCW")
+        self.assertLess(self._run(g)["fit_rms_mm"], 1e-6)
+
+    def test_curve_radius_matches_request(self):
+        for side in ("left", "right"):
+            for radius in (300, 600):
+                with self.subTest(side=side, radius=radius):
+                    g = it.make_curve_gait("tripod", 12, 45, 30, radius, side)
+                    st = self._run(g)
+                    self.assertAlmostEqual(st["measured_radius_mm"] / radius, 1.0, delta=0.005)
+
+    def test_curve_turn_rate_matches_model(self):
+        for side in ("left", "right"):
+            with self.subTest(side=side):
+                g = it.make_curve_gait("tripod", 12, 45, 30, 300, side)
+                st = self._run(g)
+                _, rate = it.body_motion(g, 12 * 0.2)
+                measured = st["heading_deg"] / (2 * 12 * 0.2)
+                self.assertAlmostEqual(abs(measured) / rate, 1.0, delta=0.01)
+                self.assertEqual(measured > 0, side == "left")      # left turns CCW (positive)
+
+    def test_spin_stays_in_place(self):
+        g = it.IccTurnGait("tripod", steps=12, stride=45, lift=30)
+        g.set_turn_in_place("CCW")
+        st = self._run(g)
+        self.assertLess(math.hypot(st["end_x"], st["end_y"]), 1.0)
+        self.assertGreater(st["heading_deg"], 0)
+
+    def test_straight_walk_distance_per_cycle(self):
+        # tripod: two planted stances per cycle, each one stride -> 2 x 45 mm per cycle (ICC at 10 m is ~2% off)
+        g = sg.Gait("tripod", steps=12, stride=45, lift=30)
+        g.set_straight(True)
+        st = self._run(g, cycles=2)
+        self.assertAlmostEqual(st["end_x"] / (2 * 2 * 45), 1.0, delta=0.03)
+        self.assertLess(abs(st["end_y"]), 2.0)
+
+    def test_curve_direction_in_the_path(self):
+        cases = {
+            ("left", False): (+1, +1),    # forward, bends left
+            ("right", False): (+1, -1),   # forward, bends right
+            ("left", True): (-1, +1),     # backward, still bends left
+            ("right", True): (-1, -1),
+        }
+        for (side, backward), (sx, sy) in cases.items():
+            with self.subTest(side=side, backward=backward):
+                g = it.make_curve_gait("tripod", 12, 45, 30, 300, side, backward)
+                st = self._run(g)
+                self.assertEqual(st["end_x"] > 0, sx > 0)
+                self.assertEqual(st["end_y"] > 0, sy > 0)
+
+
 if __name__ == "__main__":
     unittest.main()

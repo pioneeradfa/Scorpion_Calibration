@@ -8,6 +8,7 @@ Files
 - `test_walk_gui.py`      tests for the panel (request checks, plan, walk with a fake bus, stop, HTTP)
 - `icc_turn.py`          curves and turns with an ICC (skills section 7): per-leg stride, arc angle per step, guards; `--curve left|right --radius R`
 - `test_icc_turn.py`     tests for the ICC code (matches the existing gait for straight and spin, direction, guards, speed)
+- `icc_sim.py`           simulated check (no servos): fits the body pose from the planted feet, compares the path with the requested ICC; `--svg` writes the path
 - `test_scorpion_gait.py` unit tests (no hardware): `python3 -m unittest -v test_scorpion_gait`
 - Reference: `skills_12oct.md`
 
@@ -135,4 +136,13 @@ usable, but the real sit has to be checked by eye:
   Ripples and caterpillar: 45 mm per 5 s = 9 mm/s at 200 ms x 30 steps.
 - Earlier figures (18.8 mm/s tripod, 7.5 mm/s ripple) divided by the whole cycle and were too low.
 - Turns: turn rate = alpha / stance time (deg/s). Curves: speed = alpha x |ICC| / stance time.
+
+## Simulated ICC check (icc_sim.py)
+
+- Tripod, 2 cycles, 45 mm stride: stance feet fit a rigid motion with 0.000 mm residual for every curve, spin and backward case.
+- Measured curve radius equals the requested radius (300, 400, 600 mm, both sides), and the turn rate matches body_motion().
+- Spin in place: the body stays put (under 1 mm), heading change matches the model.
+- Straight walk: about 2% short of 2 x stride per cycle (the model's ICC is 10 m away, not infinite).
+- Same checks pass for ripple_123456, ripple_135246, double_ripple and caterpillar (curve 300 mm).
+- This checks the model against itself. It does not replace a test on the robot.
 
