@@ -497,6 +497,16 @@ PAGE = r"""<!doctype html>
   .pill.done { background:#e8f6ef; color:#1b6b45; }
   .pill.stopped { background:#fff4e0; color:var(--warn); }
   .pill.error { background:#fdecea; color:var(--bad); }
+  .groups { display:grid; gap:8px; }
+  .group .glabel { font-size:12px; color:var(--muted); margin:0 0 4px; }
+  .dirbtn { flex:1 1 auto; padding:7px 8px; border:1px solid var(--line); border-radius:6px; background:#fff; cursor:pointer; font:inherit; }
+  .dirbtn.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .progress { height:10px; background:#eef0f4; border-radius:99px; overflow:hidden; margin-top:10px; }
+  .progress > div { height:100%; width:0%; background:var(--accent); transition:width .3s; }
+  .progressText { font-size:12px; color:var(--muted); margin-top:4px; }
+  .checkrow { display:flex; gap:8px; align-items:center; font-weight:500; margin-top:10px; }
+  .checkrow input { width:auto; }
+  #iccCard { display:none; }
   @media (max-width: 960px) { main { grid-template-columns:1fr; } .viz { grid-template-columns:1fr; } .cards { grid-template-columns:repeat(2,1fr); } }
 </style>
 </head>
@@ -512,8 +522,12 @@ PAGE = r"""<!doctype html>
       <select id="gait"></select>
       <div class="hint" id="gaitInfo"></div>
 
-      <label>Direction</label>
-      <div class="seg" id="direction"></div>
+      <label>Movement</label>
+      <div class="groups" id="direction">
+        <div class="group"><div class="glabel">Straight</div><div class="seg" id="dirStraight"></div></div>
+        <div class="group"><div class="glabel">Spin in place</div><div class="seg" id="dirSpin"></div></div>
+        <div class="group"><div class="glabel">Curve (ICC)</div><div class="seg" id="dirCurve"></div></div>
+      </div>
 
       <label>Speed: <span id="speedLabel"></span></label>
       <input type="range" id="tick" min="100" max="500" step="10">
@@ -533,13 +547,18 @@ PAGE = r"""<!doctype html>
         <div><label for="stride">Stride (mm)</label><input type="number" id="stride" min="0" max="120" step="1"></div>
         <div><label for="lift">Lift (mm)</label><input type="number" id="lift" min="0" max="80" step="1"></div>
       </div>
-      <label for="radius">Curve radius (mm)</label>
-      <input type="number" id="radius" min="60" max="1000" step="10">
-      <div class="hint">Only for "Curve left/right": distance from the body centre to the centre of the curve (the ICC). Smaller = tighter curve.</div>
-      <label style="font-weight:500"><input type="checkbox" id="reverse"> Drive the curve backward</label>
       <label for="pose">Walking stand</label>
       <select id="pose"></select>
       <div class="hint">The robot first moves to <b>stand_initial</b>, then to this stand.</div>
+    </div>
+
+    <div class="card" id="iccCard">
+      <h2>Curve settings (ICC)</h2>
+      <label for="radius">Curve radius (mm)</label>
+      <input type="number" id="radius" min="60" max="1000" step="10">
+      <div class="hint">Distance from the body centre to the centre of the curve (the ICC). Smaller = tighter curve. Radii near 245 mm are refused: the middle feet are there.</div>
+      <label class="checkrow"><input type="checkbox" id="reverse"> Drive the curve backward</label>
+      <div class="iccbox" id="iccBox" style="display:none"></div>
     </div>
 
     <div class="card">
@@ -561,6 +580,8 @@ PAGE = r"""<!doctype html>
       </div>
       <div style="margin-top:12px"><span class="pill idle" id="state">idle</span>
         <span class="muted" id="stageText"></span></div>
+      <div class="progress"><div id="bar"></div></div>
+      <div class="progressText" id="progText"></div>
       <div class="hint" id="walkMsg"></div>
       <div class="log" id="log" style="margin-top:8px"></div>
     </div>
@@ -577,7 +598,6 @@ PAGE = r"""<!doctype html>
         <div class="stat"><b id="sJoint">-</b><span>fastest joint change (deg/tick)</span></div>
       </div>
       <div class="hint" id="planNote" style="margin-top:8px"></div>
-      <div class="iccbox" id="iccBox" style="display:none"></div>
     </div>
 
     <div class="card">
@@ -624,8 +644,11 @@ let legsOn = new Set();
 
 const LEG_ORDER = ["LF", "RF", "LM", "RM", "LR", "RR"];
 const LEG_NAME = {LF:"Left front", RF:"Right front", LM:"Left middle", RM:"Right middle", LR:"Left rear", RR:"Right rear"};
-const DIRS = [["forward","Forward"],["backward","Backward"],["left","Turn left"],["right","Turn right"],
-              ["curve_left","Curve left"],["curve_right","Curve right"]];
+const DIR_GROUPS = [
+  {group: "dirStraight", items: [["forward","Forward"], ["backward","Backward"]]},
+  {group: "dirSpin", items: [["left","Left"], ["right","Right"]]},
+  {group: "dirCurve", items: [["curve_left","Left curve"], ["curve_right","Right curve"]]},
+];
 
 function toast(text, kind) {
   const b = $("banner");
@@ -686,12 +709,14 @@ function buildControls() {
   }
   ssel.onchange = schedulePlan;
 
-  const dwrap = $("direction");
-  DIRS.forEach(([id, label]) => {
-    const b = document.createElement("button");
-    b.textContent = label; b.dataset.id = id;
-    b.onclick = () => { direction = id; markDirection(); schedulePlan(); };
-    dwrap.appendChild(b);
+  DIR_GROUPS.forEach(({group, items}) => {
+    const wrap = $(group);
+    items.forEach(([id, label]) => {
+      const b = document.createElement("button");
+      b.textContent = label; b.dataset.id = id; b.className = "dirbtn";
+      b.onclick = () => { direction = id; markDirection(); schedulePlan(); };
+      wrap.appendChild(b);
+    });
   });
   markDirection();
 
@@ -729,7 +754,8 @@ function buildControls() {
 }
 
 function markDirection() {
-  document.querySelectorAll("#direction button").forEach(b => b.classList.toggle("on", b.dataset.id === direction));
+  document.querySelectorAll(".dirbtn").forEach(b => b.classList.toggle("on", b.dataset.id === direction));
+  $("iccCard").style.display = direction.startsWith("curve_") ? "block" : "none";
 }
 
 function showGaitInfo() {
@@ -955,6 +981,13 @@ function updateWalkButton() {
   const ok = plan && plan.ok && hw && !busy && legsOn.size > 0 && tickMs >= config.limits.safe_tick_min;
   $("walk").disabled = !ok;
   $("stop").disabled = !busy;
+  if (plan && plan.ok) {
+    const p = plan.params;
+    const legs = p.legs ? p.legs.length + " leg(s)" : "all 6 legs";
+    $("walk").textContent = "Walk on robot: " + p.gait + ", " + p.cycles + " cycle(s), " + legs;
+  } else {
+    $("walk").textContent = "Walk on robot";
+  }
 }
 
 let walking = false;
@@ -988,6 +1021,11 @@ function applyStatus(st) {
   let stage = st.stage ? st.stage : "";
   if (st.state === "running" && st.stage === "walking") stage = "walking, cycle " + Math.max(1, st.cycle) + ", tick " + st.tick;
   $("stageText").textContent = stage;
+  // progress: ticks sent so far out of all ticks in the walk
+  const total = plan ? plan.summary.steps * plan.params.cycles : 0;
+  const done = st.state === "done" ? total : (st.cycle > 0 && total ? (st.cycle - 1) * plan.summary.steps + st.tick + 1 : 0);
+  $("bar").style.width = total ? Math.min(100, 100 * done / total) + "%" : "0%";
+  $("progText").textContent = total ? (Math.min(done, total) + " of " + total + " steps") : "";
   $("walkMsg").textContent = st.message || "";
   const log = $("log");
   log.textContent = st.log.join("\n");
@@ -1017,6 +1055,7 @@ async function init() {
   window.addEventListener("resize", () => { if (plan) drawAll(); });
   const st = applyStatus(await api("/api/status"));
   if (st.busy) startPolling();
+  markDirection();
   runPlan();
 }
 
