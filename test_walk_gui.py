@@ -117,6 +117,32 @@ class TestPlan(unittest.TestCase):
             res = gui.plan(base_params())
         self.assertIsNone(res["summary"]["turn_rate_deg_s"])
 
+    def test_curve_plan_reports_icc_and_path(self):
+        with gui.POSE_LOCK:
+            res = gui.plan(base_params(direction="curve_left", radius=300))
+        icc = res["icc"]
+        self.assertEqual((icc["x"], icc["y"]), (0.0, 300.0))
+        self.assertEqual(icc["direction"], "CCW")
+        self.assertAlmostEqual(icc["simulated_radius_mm"], 300.0, delta=0.5)
+        self.assertLess(icc["fit_rms_mm"], 1e-6)
+        self.assertGreater(len(res["path"]), 10)
+
+    def test_reverse_flag_drives_curve_backward(self):
+        with gui.POSE_LOCK:
+            fwd = gui.plan(base_params(direction="curve_left", radius=300))
+            bwd = gui.plan(base_params(direction="curve_left", radius=300, reverse=True))
+        self.assertIn("backward", bwd["summary"]["direction"])
+        self.assertEqual(fwd["icc"]["direction"], "CCW")
+        self.assertEqual(bwd["icc"]["direction"], "CW")
+        self.assertLess(bwd["path"][-1][0], 0)     # moved backward (-X)
+        self.assertGreater(bwd["path"][-1][1], 0)  # still bends toward the ICC (left)
+
+    def test_straight_has_no_icc_block(self):
+        with gui.POSE_LOCK:
+            res = gui.plan(base_params())
+        self.assertNotIn("icc", res)
+        self.assertGreater(len(res["path"]), 10)
+
     def test_turn_has_no_body_speed(self):
         with gui.POSE_LOCK:
             res = gui.plan(base_params(direction="left"))

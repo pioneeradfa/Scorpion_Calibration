@@ -20,11 +20,13 @@
 
 import argparse
 import json
+import math
 import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import icc_sim
 import icc_turn as it
 import scorpion_gait as sg
 from walk import GLIDE_MS
@@ -44,6 +46,7 @@ DIRECTION_LABEL = {"forward": "forward", "backward": "backward",
                    "left": "turn left in place", "right": "turn right in place",
                    "curve_left": "curve left (forward)", "curve_right": "curve right (forward)"}
 MIN_RADIUS_MM = 60            # below this the ICC is inside the body footprint
+PATH_CYCLES = 4               # cycles of body path drawn in the top view
 MAX_RADIUS_MM = 1000
 
 GAIT_INFO = {
@@ -104,6 +107,7 @@ def parse_params(data):
         "pose": pose,
         "pose_ms": _number(data, "pose_ms", DEFAULT_POSE_MS, 500, 6000, int),
         "radius": _number(data, "radius", 300.0, MIN_RADIUS_MM, MAX_RADIUS_MM),
+        "reverse": bool(data.get("reverse", False)),   # curves only: drive the curve backward
         "legs": legs,
     }
 
@@ -111,7 +115,7 @@ def parse_params(data):
 def build_gait(p):
     if p["direction"].startswith("curve_"):
         return it.make_curve_gait(p["gait"], p["steps"], p["stride"], p["lift"], p["radius"],
-                                  p["direction"][len("curve_"):])
+                                  p["direction"][len("curve_"):], backward=p["reverse"])
     gait = sg.Gait(p["gait"], steps=p["steps"], stride=p["stride"], lift=p["lift"])
     if p["direction"] == "left":
         gait.set_turn_in_place("CCW")
@@ -146,18 +150,36 @@ def plan(p):
     cycle_s = p["steps"] * p["tick_ms"] / 1000.0
     speed, rate = it.body_motion(gait, cycle_s)
     spin = p["direction"] in ("left", "right")
+    curved = p["direction"].startswith("curve_")
+    # simulated body path (icc_sim): what the ICC actually does, over a few cycles for the picture
+    sim = icc_sim.path_stats(gait, cycles=PATH_CYCLES)
+    label = DIRECTION_LABEL[p["direction"]]
+    if curved and p["reverse"]:
+        label = label.replace("(forward)", "(backward)")
     result["summary"] = {
         "steps": p["steps"],
         "tick_ms": p["tick_ms"],
         "cycle_s": cycle_s,
         "total_s": cycle_s * p["cycles"],
-        "direction": DIRECTION_LABEL[p["direction"]],
+        "direction": label,
         "body_speed_mm_s": None if spin else speed,
-        "turn_rate_deg_s": rate if (spin or p["direction"].startswith("curve_")) else None,
+        "turn_rate_deg_s": rate if (spin or curved) else None,
         "worst_joint_step_deg": gait.worst_joint_step(cycles=1),
         "tick_warning": p["tick_ms"] < SAFE_TICK_MS,
         "legs_moved": len(p["legs"]),
     }
+    if curved or spin:
+        radius = math.hypot(*gait.icc)
+        result["icc"] = {
+            "x": gait.icc[0], "y": gait.icc[1],
+            "radius_mm": radius,
+            "direction": gait.direction,                          # CW / CCW
+            "requested_radius_mm": p["radius"] if curved else 0.0,
+            "simulated_radius_mm": None if spin else sim["measured_radius_mm"],
+            "fit_rms_mm": sim["fit_rms_mm"],
+        }
+    result["path"] = [[round(x, 1), round(y, 1)] for x, y in sim["centre"][::max(1, len(sim["centre"]) // 120)]]
+    result["path_cycles"] = PATH_CYCLES
     frames = []
     for t in range(gait.steps):
         targets = gait.foot_targets(t)
@@ -450,6 +472,7 @@ PAGE = r"""<!doctype html>
   .banner { padding:10px 12px; border-radius:8px; margin-bottom:12px; display:none; }
   .banner { white-space:pre-line; }
   .banner.err { display:block; background:#fdecea; color:var(--bad); }
+  .iccbox { font:13px/1.5 ui-monospace, Menlo, monospace; white-space:pre-line; background:#fbfcfd; border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin-top:10px; }
   .banner.warn { display:block; background:#fff4e0; color:var(--warn); }
   .banner.ok { display:block; background:#e8f6ef; color:#1b6b45; }
   button.primary { width:100%; padding:10px; border:0; border-radius:8px; background:var(--accent); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
@@ -512,7 +535,8 @@ PAGE = r"""<!doctype html>
       </div>
       <label for="radius">Curve radius (mm)</label>
       <input type="number" id="radius" min="60" max="1000" step="10">
-      <div class="hint">Only for "Curve left/right": distance from the body centre to the centre of the curve. Smaller = tighter curve.</div>
+      <div class="hint">Only for "Curve left/right": distance from the body centre to the centre of the curve (the ICC). Smaller = tighter curve.</div>
+      <label style="font-weight:500"><input type="checkbox" id="reverse"> Drive the curve backward</label>
       <label for="pose">Walking stand</label>
       <select id="pose"></select>
       <div class="hint">The robot first moves to <b>stand_initial</b>, then to this stand.</div>
@@ -553,6 +577,7 @@ PAGE = r"""<!doctype html>
         <div class="stat"><b id="sJoint">-</b><span>fastest joint change (deg/tick)</span></div>
       </div>
       <div class="hint" id="planNote" style="margin-top:8px"></div>
+      <div class="iccbox" id="iccBox" style="display:none"></div>
     </div>
 
     <div class="card">
@@ -570,7 +595,7 @@ PAGE = r"""<!doctype html>
           <input type="range" id="scrub" min="0" max="0" value="0">
           <span class="muted" id="tickLabel">tick 0</span>
         </div>
-        <div class="hint">Front of the body is at the top. Play runs at the selected speed.</div>
+        <div class="hint">Front of the body is at the top. Blue line = where the body centre goes (4 cycles, simulated). Red cross = ICC (centre of the curve). Play runs at the selected speed.</div>
       </div>
       <div class="card">
         <h2>Joints at this tick (raw)</h2>
@@ -631,6 +656,7 @@ function params() {
     pose: $("pose").value,
     pose_ms: config.defaults.pose_ms,
     radius: parseFloat($("radius").value) || config.defaults.radius,
+    reverse: $("reverse").checked,
     legs: legs.length === 6 ? null : legs,
   };
 }
@@ -680,6 +706,7 @@ function buildControls() {
   $("lift").value = config.defaults.lift;
   $("radius").value = config.defaults.radius;
   ["cycles", "stride", "lift", "radius"].forEach(id => { $(id).onchange = schedulePlan; });
+  $("reverse").onchange = schedulePlan;
 
   const lwrap = $("legs");
   LEG_ORDER.forEach(n => {
@@ -756,6 +783,19 @@ function renderPlan() {
   $("planNote").textContent = plan.params.gait + ", " + s.steps + " steps, " + s.direction
     + ", " + s.legs_moved + " leg(s) on the robot, " + plan.params.cycles + " cycle(s)."
     + (s.turn_rate_deg_s === null ? "" : " Turn " + fmt(s.turn_rate_deg_s, 1) + " deg/s.");
+  const box = $("iccBox");
+  if (plan.icc) {
+    const i = plan.icc;
+    const isCurve = s.direction.startsWith("curve");
+    box.style.display = "block";
+    box.textContent = "ICC (centre of curve): x " + i.x.toFixed(0) + " mm, y " + i.y.toFixed(0) + " mm, " + i.direction + "\n"
+      + (isCurve ? "requested radius " + i.requested_radius_mm.toFixed(0) + " mm, simulated radius " + i.simulated_radius_mm.toFixed(1) + " mm\n"
+                 : "spin in place (ICC at the body centre)\n")
+      + "simulated fit error " + i.fit_rms_mm.toFixed(3) + " mm (0 = feet move as one rigid body)";
+  } else {
+    box.style.display = "none";
+    box.textContent = "";
+  }
   if (s.tick_warning) toast("Speed is faster than the servo link can keep up with (" + s.tick_ms + " ms). Robot walks are blocked below " + config.limits.safe_tick_min + " ms.", "warn");
   frame = Math.min(frame, s.steps - 1);
   $("scrub").max = s.steps - 1;
@@ -764,6 +804,7 @@ function renderPlan() {
 }
 
 function drawEmpty() {
+  $("iccBox").style.display = "none";
   ["sCycle","sTotal","sSpeed","sJoint"].forEach(id => $(id).textContent = "-");
   $("planNote").textContent = "";
   const c = $("timeline"), t = $("top");
@@ -824,6 +865,9 @@ function drawTop() {
   plan.frames.forEach(f => LEG_ORDER.forEach(n => {
     const [x, y] = f.feet[n]; maxR = Math.max(maxR, Math.abs(x), Math.abs(y));
   }));
+  const hasIcc = !!plan.icc && plan.icc.radius_mm < 2000;
+  if (plan.path) plan.path.forEach(([x, y]) => { maxR = Math.max(maxR, Math.abs(x), Math.abs(y)); });
+  if (hasIcc) maxR = Math.max(maxR, Math.abs(plan.icc.x), Math.abs(plan.icc.y));
   const cx = w / 2, cy = h / 2;
   const s = Math.min(w, h) / 2 / (maxR * 1.25 || 1);
   const X = (y) => cx - y * s;     // body Y (left) -> screen left
@@ -843,6 +887,22 @@ function drawTop() {
     });
     g.closePath(); g.stroke();
   });
+  // simulated body-centre path, and the ICC for curves / spins
+  if (plan.path && plan.path.length > 1) {
+    g.strokeStyle = "#2f6fdb"; g.lineWidth = 2;
+    g.beginPath();
+    plan.path.forEach(([x, y], i) => { i === 0 ? g.moveTo(X(y), Y(x)) : g.lineTo(X(y), Y(x)); });
+    g.stroke();
+    const [sx, sy] = plan.path[0];
+    g.fillStyle = "#2f6fdb"; g.beginPath(); g.arc(X(sy), Y(sx), 4, 0, 6.283); g.fill();
+  }
+  if (hasIcc) {
+    const ix = X(plan.icc.y), iy = Y(plan.icc.x);
+    g.strokeStyle = "#c62828"; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(ix - 9, iy); g.lineTo(ix + 9, iy); g.moveTo(ix, iy - 9); g.lineTo(ix, iy + 9); g.stroke();
+    g.fillStyle = "#c62828"; g.font = "bold 11px system-ui"; g.textAlign = "left"; g.textBaseline = "middle";
+    g.fillText("ICC " + plan.icc.direction, ix + 11, iy);
+  }
   // mounts and current feet
   const f = plan.frames[frame];
   LEG_ORDER.forEach(n => {
