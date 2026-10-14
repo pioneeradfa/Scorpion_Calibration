@@ -6,6 +6,8 @@ Files
 - `walk.py`              any gait, any number of cycles, tick timing (`--tick-ms`), dry run by default
 - `walk_gui.py`          browser control panel: gait, speed, steps, cycles, direction, legs; live plan and gait picture; Walk / Stop. Standard library only. `--host 127.0.0.1` (default, this machine) or `0.0.0.0` (network)
 - `test_walk_gui.py`      tests for the panel (request checks, plan, walk with a fake bus, stop, HTTP)
+- `walk_lidar.py`        the walk panel with obstacle avoidance from the top-mounted LiDAR (LIDAR D300 DTOF kit, LD19 protocol). Reuses `walk_gui` (same page, same walk) and adds a LiDAR card. Stops before a tick if an obstacle is in the path of the active gait, or if LiDAR data is older than 0.5 s. Optional turn-away (off by default). `--simulate-lidar` for no hardware (the robot cannot walk); `--lidar-check 5` prints what the sensor sees
+- `test_walk_lidar.py`   tests for the LiDAR code (packets, CRC, zones, walk gate, turn-away, HTTP)
 - `icc_turn.py`          curves and turns with an ICC (skills section 7): per-leg stride, arc angle per step, guards; `--curve left|right --radius R`
 - `test_icc_turn.py`     tests for the ICC code (matches the existing gait for straight and spin, direction, guards, speed)
 - `icc_sim.py`           simulated check (no servos): fits the body pose from the planted feet, compares the path with the requested ICC; `--svg` writes the path
@@ -22,6 +24,9 @@ python3 walk.py --curve right --curve-radius 200 --backward  # curve right, back
 python3 icc_turn.py --curve left --radius 300               # section 7 numbers, dry run
 python3 walk_gui.py                                     # control panel at http://localhost:8000
 python3 walk_gui.py --host 0.0.0.0                       # also from another computer on the network
+python3 walk_lidar.py --simulate-lidar                    # walk panel + LiDAR card, simulated scan (no walking)
+python3 walk_lidar.py --lidar-port /dev/ttyUSB0 --lidar-check 5   # what the LiDAR sees (mount check), then exit
+python3 walk_lidar.py --lidar-port /dev/ttyUSB0 --host 0.0.0.0   # walk with LiDAR obstacle stop
 python3 walk_one_step.py                    # dry run: prints the 12-tick step
 python3 walk_one_step.py --hardware --legs RF   # one leg, asks YES
 python3 walk_one_step.py --hardware             # full robot, asks YES
