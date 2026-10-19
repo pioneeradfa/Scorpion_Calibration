@@ -29,6 +29,7 @@ import argparse
 import collections
 import json
 import math
+import os
 import struct
 import sys
 import threading
@@ -38,6 +39,7 @@ from http.server import ThreadingHTTPServer
 import icc_turn as it
 import scorpion_gait as sg
 import walk_gui as wg
+import walk_log
 from walk import GLIDE_MS
 
 #---------------------------------------------------------------------------------
@@ -397,6 +399,9 @@ class LidarWalker(wg.Walker):
         self.gait = None                           # the gait being walked (read by the LiDAR card)
         self.lidar_status = "unknown"
         self.lidar_nearest_mm = None
+        self.log_dir = walk_log.LOG_DIR          # where each walk's joint-angle CSV is saved
+        self.last_log = None                     # path of the last saved walk log
+        self._log = None                         # the log of the walk in progress
 
     def status(self):
         s = super().status()
@@ -442,14 +447,23 @@ class LidarWalker(wg.Walker):
                 raise wg.ParamError("obstacle %d mm from the centre: clear the way first" % a["nearest_mm"])
         return super().start(p, confirm)
 
+    @staticmethod
+    def _is_dry(bus):
+        return isinstance(getattr(bus, "inner", bus), sg.DryRunBus)
+
     def _send_tick(self, gait, bus, p, legs):
         t0 = time.monotonic()
         self._check_stop()
         self._gate(gait)
-        joints = gait.next_joints()
-        bus.send(joints, p["tick_ms"], legs)
+        t = gait.tick
+        self._log.set_tick(t, [n for n in sg.LEG_ORDER if gait._is_swing(n, t)])
+        try:
+            joints = gait.next_joints()
+            bus.send(joints, p["tick_ms"], legs)
+        finally:
+            self._log.set_tick(None, None)
         self._set(tick=gait.tick)
-        if not isinstance(bus, sg.DryRunBus):
+        if not self._is_dry(bus):
             time.sleep(max(0.0, p["tick_ms"] / 1000.0 - (time.monotonic() - t0)))
 
     def _glide(self, gait, bus, legs):
@@ -457,7 +471,7 @@ class LidarWalker(wg.Walker):
         self._check_stop()
         self._gate(gait)
         bus.send(gait.joints_at(0), GLIDE_MS, legs)
-        if not isinstance(bus, sg.DryRunBus):
+        if not self._is_dry(bus):
             time.sleep(GLIDE_MS / 1000.0)
 
     def _turn_away(self, p, side, bus, legs):
@@ -469,8 +483,18 @@ class LidarWalker(wg.Walker):
             self._send_tick(spin, bus, p, legs)
         sg.move_to_pose(bus, p["pose"], move_ms=p["pose_ms"], legs=legs)
 
+    def _save_log(self):
+        try:
+            path = self._log.save(self.log_dir)
+            self.last_log = path
+            self._note("joint angles saved: %s" % os.path.basename(path))
+        except OSError as exc:
+            self._note("could not save the joint-angle log: %s" % exc)
+
     def _run(self, p, gait, bus, legs):
         self.gait = gait
+        self._log = walk_log.WalkLog(p, source=self)
+        bus = walk_log.LoggedBus(bus, self._log)
         error = ""
         kind = "done"
         try:
@@ -530,6 +554,7 @@ class LidarWalker(wg.Walker):
                 error = (error + "; " if error else "") + "could not return to walking stand: %s" % exc
                 kind = "error"
                 self._note(error)
+            self._save_log()
             with self._lock:
                 self.stage = ""
                 if kind == "error":
@@ -561,6 +586,7 @@ LIDAR_CARD = r"""
     <div><label for="lWarn">Warn distance (mm)</label><input type="number" id="lWarn" min="200" max="4000" step="10"></div>
   </div>
   <label class="checkrow"><input type="checkbox" id="lAvoid"> Turn away from obstacles (stop, turn, check again)</label>
+  <div class="hint">Joint angles of each walk are saved as CSV (see walk_log.py). Latest: <a id="logLink" href="#">none yet</a> &middot; <a href="/api/walk_logs" target="_blank">all walks</a></div>
   <div class="hint">Stopping is always on: a blocked way stops the walk even when turn-away is off. The distance is from the body centre; the legs reach about <span id="lFoot">-</span> mm.</div>
   <div class="simbox" id="simBox" style="display:none">
     <div class="hint">Simulated LiDAR: the test obstacle is a 300 mm box. Body frame, mm, front = +X, left = +Y. The robot cannot walk while the LiDAR is simulated.</div>
@@ -682,7 +708,16 @@ LIDAR_JS = r"""
     try { await call("/api/lidar/sim", {x: parseFloat($L("simX").value), y: parseFloat($L("simY").value)}); }
     catch (e) { alert(e.message); }
   });
+  async function refreshLogs() {
+    try {
+      const d = await call("/api/walk_logs");
+      const a = $L("logLink");
+      if (d.logs.length) { a.href = "/api/walk_logs/" + d.logs[0].name; a.textContent = d.logs[0].name; }
+    } catch (e) { /* ignore */ }
+    setTimeout(refreshLogs, 5000);
+  }
   poll();
+  refreshLogs();
 })();
 """
 
@@ -761,6 +796,16 @@ class LidarHandler(wg.Handler):
             self._json(200, cfg)
         elif path == "/api/lidar":
             self._json(200, lidar_view())
+        elif path == "/api/walk_logs":
+            self._json(200, {"dir": STATE["walker"].log_dir, "logs": walk_log.list_logs(STATE["walker"].log_dir)})
+        elif path.startswith("/api/walk_logs/"):
+            name = path[len("/api/walk_logs/"):]
+            full = walk_log.safe_path(name, STATE["walker"].log_dir)
+            if full is None:
+                self._json(404, {"error": "no such walk log"})
+            else:
+                with open(full, "rb") as f:
+                    self._send(200, f.read(), "text/csv; charset=utf-8")
         else:
             super().do_GET()
 

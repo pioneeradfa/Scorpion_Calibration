@@ -9,10 +9,16 @@ import unittest
 import urllib.error
 import urllib.request
 
+import tempfile
+
 import icc_turn as it
 import scorpion_gait as sg
 import walk_gui as wg
 import walk_lidar as wl
+import walk_log
+
+# walks in these tests save their joint-angle logs to a temporary folder, not to the repo's walk_logs/
+walk_log.LOG_DIR = tempfile.mkdtemp(prefix="walk_lidar_test_")
 
 
 def clear_readings(dist=3000, inten=200):
