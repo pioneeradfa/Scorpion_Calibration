@@ -143,6 +143,17 @@ usable, but the real sit has to be checked by eye:
 - Earlier figures (18.8 mm/s tripod, 7.5 mm/s ripple) divided by the whole cycle and were too low.
 - Turns: turn rate = alpha / stance time (deg/s). Curves: speed = alpha x |ICC| / stance time.
 
+## LiDAR walk: checklist before the robot moves (walk_lidar.py)
+Calibrated mount (2026-11-04): `--lidar-yaw -87.3 --lidar-dir -1`. Keep these with your other options.
+1. Stand the robot on a clear floor, switch on, and check with `--lidar-check 5`. Nothing should be closer than the stop distance (427 mm) except a deliberate test object. If the robot's own legs or body show up at 150–427 mm, tell me before walking.
+2. Walk with no obstacle: tripod, 1 cycle, Walk on robot. Check the joint log (`walk_logs/`) and the panel.
+3. Blocked start: put an object about 350 mm in front. Walk forward must be refused, and no servo moves.
+4. Stop during a walk: walk 3 cycles with nothing in the way, press Stop. The robot should finish the tick and return to the walking stand.
+5. LiDAR loss: unplug the LiDAR during a walk. The walk must stop within about 0.5 s and return to the walking stand.
+6. Obstacle during a walk: move an object into the path while walking forward 1 cycle at a time. The walk must stop before the stop distance.
+7. Only after 1–6, enable turn-away (page checkbox) and test with an object placed to one side.
+Emergency: use **Stop** on the page first. Ctrl+C on the server is not a safe stop: it kills the walk thread mid-stride and the servos hold their last pose. Cut servo power if the robot must stop immediately.
+
 ## Simulated ICC check (icc_sim.py)
 
 - Tripod, 2 cycles, 45 mm stride: stance feet fit a rigid motion with 0.000 mm residual for every curve, spin and backward case.
