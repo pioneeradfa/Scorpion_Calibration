@@ -23,6 +23,7 @@
 #   python3 walk_lidar.py --simulate-lidar                          # no hardware: simulated scan, no walking
 #   python3 walk_lidar.py --lidar-port /dev/ttyUSB0 --host 0.0.0.0   # the real LiDAR on the Pi
 #   python3 walk_lidar.py --lidar-port /dev/ttyUSB0 --lidar-check 5  # print what the LiDAR sees, then exit
+#   python3 walk_lidar.py --lidar-port /dev/ttyUSB0 --lidar-calibrate # find --lidar-yaw and --lidar-dir
 #=================================================================================
 
 import argparse
@@ -214,6 +215,10 @@ class LidarSource:
         with self._lock:
             self._prune(now)
             return [(a, d) for _, a, d in self._pts]
+
+    def frame_points(self, now=None):
+        """Recent scan points in the sensor's own frame: list of (angle_deg, distance_mm)."""
+        return self._frame_points(time.monotonic() if now is None else now)
 
     def body_points(self, now=None):
         """Recent scan points in the body frame: list of (x, y) in mm, robot's own parts removed."""
@@ -889,9 +894,73 @@ def lidar_check(source, seconds):
     print("nearest point by direction (from the body centre, mm):")
     for n in DIRECTIONS:
         print("  %-12s %s" % (n, "-" if best[n] is None else "%.0f" % best[n]))
-    print("To calibrate the mount: put a box straight in front of the robot and run this again.")
-    print("'front' should show the box. If it shows on another side, change --lidar-yaw or --lidar-dir.")
+    print("To set the mount (--lidar-yaw and --lidar-dir): run --lidar-calibrate, then check here again.")
+    print("With the box straight in front, 'front' should show it. If it shows on another side, calibrate.")
     return 0 if h["ok"] else 1
+
+
+#---------------------------------------------------------------------------------
+# Mount calibration: finds --lidar-yaw and --lidar-dir from two placements of one object
+
+CAL_CLUSTER_MM = 120      # points this close to the nearest return belong to the object
+CAL_TOLERANCE_DEG = 25    # the left object must come out within this of 90 deg, or the calibration is rejected
+
+
+def wrap180(a):
+    return (a + 180.0) % 360.0 - 180.0
+
+
+def circular_mean_deg(angles):
+    s = sum(math.sin(math.radians(a)) for a in angles)
+    c = sum(math.cos(math.radians(a)) for a in angles)
+    return math.degrees(math.atan2(s, c)) % 360.0
+
+
+def solve_mount(a_front, a_left):
+    """a_front, a_left: sensor-frame angles (deg) of the object placed straight ahead and to the left.
+    Body angle = direction * sensor angle + yaw. Tries both directions; returns (yaw_deg, direction, left_error_deg)
+    for the direction whose left placement comes out closest to 90 deg."""
+    best = None
+    for d in (1, -1):
+        yaw = wrap180(-d * a_front)                  # makes the front object come out at 0 deg
+        left = wrap180(d * a_left + yaw)
+        err = abs(wrap180(left - 90.0))
+        if best is None or err < best[2]:
+            best = (round(yaw, 1), d, round(err, 1))
+    return best
+
+
+def object_angle(source, seconds, poll=0.05):
+    """Sensor-frame angle of the nearest object seen during `seconds`, and its distance."""
+    samples = []
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        samples += [(a, d) for a, d in source.frame_points(time.monotonic()) if d >= MIN_RANGE_MM]
+        time.sleep(poll)
+    if not samples:
+        raise RuntimeError("no LiDAR points while measuring: check the sensor (see --lidar-check)")
+    near = min(d for _, d in samples)
+    cluster = [a for a, d in samples if d <= near + CAL_CLUSTER_MM]
+    return circular_mean_deg(cluster), near
+
+
+def calibrate(source, seconds=3.0):
+    """Interactive: object 500 mm straight in front, then on the robot's left. Prints the mount settings."""
+    input("Put a box (or a flat board) about 500 mm straight IN FRONT of the robot's front, keep it still, press Enter...")
+    a_f, d_f = object_angle(source, seconds)
+    print("front object: sensor angle %.1f deg, %.0f mm" % (a_f, d_f))
+    input("Now move the same object about 500 mm to the robot's LEFT side, keep it still, press Enter...")
+    a_l, d_l = object_angle(source, seconds)
+    print("left object:  sensor angle %.1f deg, %.0f mm" % (a_l, d_l))
+    yaw, d, err = solve_mount(a_f, a_l)
+    print()
+    print("result: --lidar-yaw %g --lidar-dir %d   (left object comes out %.0f deg from 90)" % (yaw, d, err))
+    if err > CAL_TOLERANCE_DEG:
+        print("WARNING: the left object did not come out on the left. Check the placement and run again.")
+        return 1
+    print("Use these two values with your other options, then check with --lidar-check:")
+    print("the object in front should show under 'front', the one on the left under 'left'.")
+    return 0
 
 
 def main(argv=None):
@@ -911,6 +980,8 @@ def main(argv=None):
                         help="no hardware: simulated scan with a movable box (the robot cannot walk)")
     parser.add_argument("--lidar-check", type=float, metavar="SECONDS",
                         help="print what the LiDAR sees for SECONDS, then exit")
+    parser.add_argument("--lidar-calibrate", action="store_true",
+                        help="find --lidar-yaw and --lidar-dir: place one object in front, then on the left")
     parser.add_argument("--stop-mm", type=float, default=DEFAULT_STOP_MM)
     parser.add_argument("--warn-mm", type=float, default=DEFAULT_WARN_MM)
     args = parser.parse_args(argv)
@@ -929,6 +1000,8 @@ def main(argv=None):
 
     if args.lidar_check is not None:
         return lidar_check(source, args.lidar_check)
+    if args.lidar_calibrate:
+        return calibrate(source)
 
     setup(source, Settings(args.stop_mm, args.warn_mm, avoid=False))
     server = make_server(args.host, args.port)

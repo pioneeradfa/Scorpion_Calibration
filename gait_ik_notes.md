@@ -26,6 +26,7 @@ python3 walk_gui.py                                     # control panel at http:
 python3 walk_gui.py --host 0.0.0.0                       # also from another computer on the network
 python3 walk_lidar.py --simulate-lidar                    # walk panel + LiDAR card, simulated scan (no walking)
 python3 walk_lidar.py --lidar-port /dev/ttyUSB0 --lidar-check 5   # what the LiDAR sees (mount check), then exit
+python3 walk_lidar.py --lidar-port /dev/ttyUSB0 --lidar-calibrate # sets --lidar-yaw and --lidar-dir: box in front, then on the left
 python3 walk_lidar.py --lidar-port /dev/ttyUSB0 --host 0.0.0.0   # walk with LiDAR obstacle stop
 python3 walk_one_step.py                    # dry run: prints the 12-tick step
 python3 walk_one_step.py --hardware --legs RF   # one leg, asks YES

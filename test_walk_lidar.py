@@ -403,5 +403,60 @@ class PageAndRouteTests(unittest.TestCase):
         self.assertIn("tripod", [g["id"] for g in cfg["gaits"]])
 
 
+class CalibrationTests(unittest.TestCase):
+
+    def test_solver_finds_yaw_and_direction(self):
+        # mount turned by 90 deg, angle increases to the left: front at sensor 270, left at sensor 0
+        self.assertEqual(wl.solve_mount(270.0, 0.0), (90.0, 1, 0.0))
+        # angle increases to the right: front at sensor 0, left at sensor 270
+        self.assertEqual(wl.solve_mount(0.0, 270.0), (0.0, -1, 0.0))
+
+    def test_solver_flags_a_left_object_that_is_not_on_the_left(self):
+        _, _, err = wl.solve_mount(-90.0, 90.0)
+        self.assertGreater(err, wl.CAL_TOLERANCE_DEG)
+
+    def test_wrap_and_circular_mean(self):
+        self.assertAlmostEqual(wl.wrap180(190.0), -170.0)
+        self.assertAlmostEqual(wl.wrap180(-190.0), 170.0)
+        self.assertAlmostEqual(wl.circular_mean_deg([350.0, 10.0]) % 360.0, 0.0, places=6)
+
+    def test_object_angle_uses_the_nearest_return(self):
+        class Fixed(wl.LidarSource):
+            def frame_points(self, now=None):
+                return [(100.0, 500.0), (102.0, 510.0), (98.0, 520.0), (250.0, 2000.0)]
+        a, d = wl.object_angle(Fixed(wl.Mount()), 0.05)
+        self.assertAlmostEqual(d, 500.0)
+        self.assertAlmostEqual(a, 100.0, delta=1.0)
+
+    def test_object_angle_needs_points(self):
+        class Empty(wl.LidarSource):
+            def frame_points(self, now=None):
+                return []
+        with self.assertRaises(RuntimeError):
+            wl.object_angle(Empty(wl.Mount()), 0.05)
+
+    def test_interactive_calibration_prints_the_settings(self):
+        import io
+        import unittest.mock as mock
+
+        state = {"placement": 0}
+
+        class TwoPlacements(wl.LidarSource):
+            def frame_points(self, now=None):
+                # after the first Enter (state 1) the object is in front and reads 270 deg;
+                # after the second Enter (state 2) it is on the left and reads 0 deg
+                return [(270.0 if state["placement"] == 1 else 0.0, 500.0)]
+
+        def fake_input(prompt=""):
+            state["placement"] += 1
+            return ""
+
+        out = io.StringIO()
+        with mock.patch("builtins.input", fake_input), mock.patch("sys.stdout", out):
+            rc = wl.calibrate(TwoPlacements(wl.Mount()), seconds=0.05)
+        self.assertEqual(rc, 0)
+        self.assertIn("--lidar-yaw 90 --lidar-dir 1", out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()
