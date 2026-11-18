@@ -97,6 +97,15 @@ SERVO_IDS = {
     "LF": [24, 23, 22], "LM": [13, 14, 15], "LR": [10, 11, 12],
 }
 
+# Claws: separate servos, not part of the legs (channels from stand_sit_walk_tail_claw_belly.py).
+CLAW_PINS = {"right": 28, "left": 25}
+# Raw angle per claw for each pose, same scale as the legs (per-claw calibration from the legacy script)
+CLAW_POSES = {
+    "open":   {"right": 90, "left": 90},
+    "closed": {"right": 30, "left": 150},
+    "grip":   {"right": 20, "left": 170},
+}
+
 # Coxa-axis mount in the body frame (skills 2.2), mm
 MOUNT = {
     "LF": (115.0, 60.0),  "LM": (0.0, 60.0),  "LR": (-115.0, 60.0),
@@ -546,6 +555,11 @@ class DryRunBus:
             for servo_id, angle in zip(SERVO_IDS[name], raw):
                 self.commands.append((servo_id, pulse_us(angle), move_ms))
 
+    def send_claws(self, angles, move_ms):
+        """angles: {side: raw} for the 'left' and 'right' claws. The servo moves by itself over move_ms."""
+        for side, raw in angles.items():
+            self.commands.append((CLAW_PINS[side], pulse_us(raw), move_ms))
+
 
 class ServoControlBus:
     """Sends commands with the Hiwonder ServoControl library (Raspberry Pi only)."""
@@ -561,6 +575,10 @@ class ServoControlBus:
                 continue
             for servo_id, angle in zip(SERVO_IDS[name], raw):
                 self._sc.setPWMServoMove(servo_id, pulse_us(angle), move_ms)
+
+    def send_claws(self, angles, move_ms):
+        for side, raw in angles.items():
+            self._sc.setPWMServoMove(CLAW_PINS[side], pulse_us(raw), move_ms)
 
 
 def set_active_pose(pose):

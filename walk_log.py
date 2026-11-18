@@ -37,6 +37,7 @@ def columns():
         for j in JOINTS:
             cols += ["%s_%s_raw" % (leg, j), "%s_%s_deg" % (leg, j)]
         cols.append("%s_swing" % leg)
+    cols += ["claw_left_raw", "claw_left_deg", "claw_right_raw", "claw_right_deg"]
     return cols
 
 
@@ -87,6 +88,23 @@ class WalkLog:
                 row["%s_swing" % leg] = ""
         self.rows.append(row)
 
+    def record_claws(self, angles, move_ms):
+        """A claw command: one row, legs blank. angles: {side: raw}."""
+        src = self.source
+        row = {
+            "t_s": round(time.monotonic() - self.t0, 3),
+            "stage": getattr(src, "stage", "") or "",
+            "cycle": getattr(src, "cycle", "") or "",
+            "tick": "",
+            "move_ms": move_ms,
+            "lidar_nearest_mm": "",
+        }
+        for side in ("left", "right"):
+            if side in angles:
+                row["claw_%s_raw" % side] = round(float(angles[side]), 2)
+                row["claw_%s_deg" % side] = round(sg.raw_to_phys(float(angles[side])), 2)
+        self.rows.append(row)
+
     def sidecar(self):
         return {
             "started": self.started.isoformat(timespec="seconds"),
@@ -130,6 +148,10 @@ class LoggedBus:
     def send(self, joints, move_ms, legs=None):
         self.log.record(joints, move_ms, legs)
         return self.inner.send(joints, move_ms, legs)
+
+    def send_claws(self, angles, move_ms):
+        self.log.record_claws(angles, move_ms)
+        return self.inner.send_claws(angles, move_ms)
 
 
 def list_logs(directory=None):

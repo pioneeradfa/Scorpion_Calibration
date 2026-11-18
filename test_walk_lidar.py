@@ -419,6 +419,24 @@ class PageAndRouteTests(unittest.TestCase):
         self.assertEqual(json.loads(body)["avoid_side"], "left")
         self._req("/api/lidar/settings", {"avoid_side": "auto"})
 
+    def test_claw_settings_and_button_routes_validate(self):
+        code, _ = self._req("/api/lidar/settings", {"claw_end": "wave"})
+        self.assertEqual(code, 400)
+        code, body = self._req("/api/lidar/settings", {"claw_end": "grip"})
+        self.assertEqual(code, 200)
+        self.assertEqual(json.loads(body)["claw_end"], "grip")
+        self._req("/api/lidar/settings", {"claw_end": "closed"})
+        code, _ = self._req("/api/claws", {"pose": "wave"})
+        self.assertEqual(code, 400)
+
+    def test_page_has_claw_buttons_and_choices(self):
+        code, body = self._req("/")
+        text = body.decode()
+        self.assertIn('id="clawCard"', text)
+        self.assertIn('data-claw="snap"', text)
+        self.assertIn('id="cStart"', text)
+        self.assertIn('id="cObs"', text)
+
     def test_move_sim_box(self):
         code, _ = self._req("/api/lidar/sim", {"x": 100, "y": 0})
         self.assertEqual(code, 400)                                 # too close: outside the allowed range
@@ -442,6 +460,92 @@ class PageAndRouteTests(unittest.TestCase):
         cfg = json.loads(body)
         self.assertIn("lidar", cfg)
         self.assertIn("tripod", [g["id"] for g in cfg["gaits"]])
+
+
+class ClawTests(unittest.TestCase):
+    """Claws: moved at walk start, end and on an obstacle stop, and by the buttons. Dry run only."""
+
+    def _run(self, source, **settings_kw):
+        p = params(cycles=1)
+        w = wl.LidarWalker(source, wl.Settings(avoid=False, **settings_kw), bus_factory=sg.DryRunBus)
+        bus = sg.DryRunBus()
+        gait = wg.build_gait(p)
+        w._stop.clear()
+        w._set(state="running", stage="", cycle=0, tick=0, message="")
+        w._run(p, gait, bus, None)
+        return w, bus
+
+    @staticmethod
+    def _claw_commands(bus):
+        pins = set(sg.CLAW_PINS.values())
+        return [(pin, pulse) for (pin, pulse, _ms) in bus.commands if pin in pins]
+
+    @staticmethod
+    def _pose_commands(pose):
+        return [(sg.CLAW_PINS[side], sg.pulse_us(sg.CLAW_POSES[pose][side])) for side in ("right", "left")]
+
+    def test_claws_keep_means_no_claw_commands(self):
+        w, bus = self._run(wl.SimSource(wl.Mount(), box_x=5000.0),
+                           claw_start="keep", claw_end="keep", claw_obstacle="keep")
+        self.assertEqual(w.state, "done", w.message)
+        self.assertEqual(self._claw_commands(bus), [])
+
+    def test_default_claw_settings_open_at_start_and_close_at_end(self):
+        self.assertEqual(wl.Settings().claw_start, "open")
+        self.assertEqual(wl.Settings().claw_end, "closed")
+        self.assertEqual(wl.Settings().claw_obstacle, "closed")
+        w, bus = self._run(wl.SimSource(wl.Mount(), box_x=5000.0),
+                           claw_start="open", claw_end="closed", claw_obstacle="keep")
+        self.assertEqual(w.state, "done", w.message)
+        self.assertEqual(self._claw_commands(bus), self._pose_commands("open") + self._pose_commands("closed"))
+
+    def test_obstacle_stop_moves_claws_to_the_obstacle_pose(self):
+        w, bus = self._run(ScriptedSource(block_from=5),
+                           claw_start="keep", claw_end="keep", claw_obstacle="grip")
+        self.assertEqual(w.state, "obstacle", w.message)
+        self.assertEqual(self._claw_commands(bus), self._pose_commands("grip"))
+
+    def test_claw_moves_are_written_to_the_walk_log(self):
+        w, _bus = self._run(wl.SimSource(wl.Mount(), box_x=5000.0),
+                            claw_start="open", claw_end="closed", claw_obstacle="keep")
+        claw_rows = [r for r in w._log.rows if "claw_right_raw" in r]
+        self.assertEqual([r["claw_right_raw"] for r in claw_rows], [90, 30])
+        self.assertEqual([r["claw_left_raw"] for r in claw_rows], [90, 150])
+        self.assertEqual(claw_rows[0]["claw_right_deg"], round(90 * sg.PHYS_PER_RAW, 2))
+
+    def test_settings_reject_unknown_claw_choice(self):
+        s = wl.Settings(claw_start="wave", claw_end="grip", claw_obstacle="open")
+        self.assertEqual(s.claw_start, "keep")
+        self.assertEqual(s.claw_end, "grip")
+        self.assertEqual(s.as_dict()["claw_obstacle"], "open")
+
+    def test_claw_button_refuses_unknown_pose(self):
+        with self.assertRaises(wg.ParamError):
+            wl.claw_action("wave")
+
+    def test_claw_button_refused_while_walking(self):
+        w = wl.LidarWalker(wl.SimSource(wl.Mount()), wl.Settings(), bus_factory=sg.DryRunBus)
+        busy = threading.Thread(target=time.sleep, args=(1.0,), daemon=True)
+        busy.start()
+        w._thread = busy
+        saved = wl.STATE.get("walker")
+        wl.STATE["walker"] = w
+        try:
+            with self.assertRaises(wg.ParamError):
+                wl.claw_action("open")
+        finally:
+            wl.STATE["walker"] = saved
+            busy.join()
+
+    def test_claw_button_moves_claws_when_idle(self):
+        w = wl.LidarWalker(wl.SimSource(wl.Mount()), wl.Settings(), bus_factory=sg.DryRunBus)
+        saved = wl.STATE.get("walker")
+        wl.STATE["walker"] = w
+        try:
+            self.assertEqual(wl.claw_action("open"), {"pose": "open"})
+            self.assertEqual(wl.claw_action("grip"), {"pose": "grip"})
+        finally:
+            wl.STATE["walker"] = saved
 
 
 class CalibrationTests(unittest.TestCase):

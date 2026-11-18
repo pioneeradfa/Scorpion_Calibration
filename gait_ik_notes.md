@@ -144,7 +144,7 @@ usable, but the real sit has to be checked by eye:
 - Turns: turn rate = alpha / stance time (deg/s). Curves: speed = alpha x |ICC| / stance time.
 
 ## LiDAR walk: checklist before the robot moves (walk_lidar.py)
-Calibrated mount (2026-11-04): `--lidar-yaw -87.3 --lidar-dir -1`. Keep these with your other options.
+Calibrated mount (measured on the Pi with `--lidar-calibrate`): `--lidar-yaw -87.3 --lidar-dir -1`. Keep these with your other options.
 1. Stand the robot on a clear floor, switch on, and check with `--lidar-check 5`. Nothing should be closer than the stop distance (427 mm) except a deliberate test object. If the robot's own legs or body show up at 150–427 mm, tell me before walking.
 2. Walk with no obstacle: tripod, 1 cycle, Walk on robot. Check the joint log (`walk_logs/`) and the panel.
 3. Blocked start: put an object about 350 mm in front. Walk forward must be refused, and no servo moves.
@@ -152,6 +152,7 @@ Calibrated mount (2026-11-04): `--lidar-yaw -87.3 --lidar-dir -1`. Keep these wi
 5. LiDAR loss: unplug the LiDAR during a walk. The walk must stop within about 0.5 s and return to the walking stand.
 6. Obstacle during a walk: move an object into the path while walking forward 1 cycle at a time. The walk must stop before the stop distance.
 7. Turn-away is on by default: an obstacle stops the walk at the walking stand, the robot turns away from it (left or right, or the clearer side on auto), stands and checks again. Test it with an object placed to one side, once with the page setting "Turn away to" on auto, once on left or right. To test stop-only, start with `--no-turn-away` or untick the page checkbox. Turns are only for forward, backward and curve walks; a turn in place just stops.
+8. Claws (separate servos, channels 28 right and 25 left; they do not move the legs). Use the Open, Close, Grip and Snap buttons first, with nothing near the claws. The page has three choices: at walk start (default open), at walk end (default closed), and when an obstacle stops the walk (default closed). Each can be set to keep. Check that the claws move as expected in one walk before a full walk.
 Emergency: use **Stop** on the page first. Ctrl+C on the server is not a safe stop: it kills the walk thread mid-stride and the servos hold their last pose. Cut servo power if the robot must stop immediately.
 
 ## Simulated ICC check (icc_sim.py)
