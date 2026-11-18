@@ -276,9 +276,9 @@ class WalkStartTests(unittest.TestCase):
 class WalkRunTests(unittest.TestCase):
     """Runs the walk synchronously (no thread) with a dry-run bus and a scripted scan."""
 
-    def _run(self, source, walker_avoid=False, **pkw):
+    def _run(self, source, walker_avoid=False, side="auto", **pkw):
         p = params(**pkw)
-        w = wl.LidarWalker(source, wl.Settings(avoid=walker_avoid), bus_factory=sg.DryRunBus)
+        w = wl.LidarWalker(source, wl.Settings(avoid=walker_avoid, avoid_side=side), bus_factory=sg.DryRunBus)
         bus = sg.DryRunBus()
         gait = wg.build_gait(p)
         legs = None
@@ -323,6 +323,39 @@ class WalkRunTests(unittest.TestCase):
         w, _, _ = self._run(src, walker_avoid=True, cycles=3, direction="forward")
         self.assertEqual(w.state, "obstacle")
         self.assertEqual("\n".join(w.log).count("turning right"), wl.MAX_AVOID_TURNS)
+
+
+class TurnAwayTests(unittest.TestCase):
+    """Turn-away choices. Obstacle on the robot's left (block point (400, 60)) unless stated."""
+
+    def test_preferred_side_is_used_when_clear(self):
+        self.assertEqual(wl.clearer_side([(300, -150)], 427, "left"), "left")
+        self.assertEqual(wl.clearer_side([(300, 150)], 427, "right"), "right")
+
+    def test_preferred_side_falls_back_when_blocked(self):
+        self.assertEqual(wl.clearer_side([(300, 150)], 427, "left"), "right")
+        self.assertIsNone(wl.clearer_side([(300, 150), (300, -150)], 427, "left"))
+        self.assertIsNone(wl.clearer_side([(300, 150), (300, -150)], 427))
+
+    def test_turn_side_setting_is_used_in_a_walk(self):
+        runner = WalkRunTests("test_clear_walk_completes")
+        src = ScriptedSource(block_from=5, block_until=6)           # obstacle on the left
+        w, _, _ = runner._run(src, walker_avoid=True, side="right", cycles=2, direction="forward")
+        self.assertIn("turning right", "\n".join(w.log))
+        self.assertEqual(w.state, "done", w.message)
+
+    def test_curve_walk_turns_away_too(self):
+        runner = WalkRunTests("test_clear_walk_completes")
+        src = ScriptedSource(block_from=5, block_until=6)
+        w, _, _ = runner._run(src, walker_avoid=True, cycles=2, direction="curve_left", radius=300.0)
+        log = "\n".join(w.log)
+        self.assertEqual(w.state, "done", w.message + "\n" + log)
+        self.assertIn("turning right", log)
+
+    def test_settings_default_is_turn_away_on(self):
+        s = wl.Settings()
+        self.assertTrue(s.avoid)
+        self.assertEqual(s.avoid_side, "auto")
 
 
 class PageAndRouteTests(unittest.TestCase):
@@ -377,6 +410,14 @@ class PageAndRouteTests(unittest.TestCase):
         self.assertEqual(json.loads(body)["stop_mm"], 450)
         self.assertTrue(self.walker.settings.avoid)
         self._req("/api/lidar/settings", {"stop_mm": wl.DEFAULT_STOP_MM, "warn_mm": wl.DEFAULT_WARN_MM, "avoid": False})
+
+    def test_turn_side_setting_is_validated_and_saved(self):
+        code, _ = self._req("/api/lidar/settings", {"avoid_side": "up"})
+        self.assertEqual(code, 400)
+        code, body = self._req("/api/lidar/settings", {"avoid_side": "left", "avoid": True})
+        self.assertEqual(code, 200)
+        self.assertEqual(json.loads(body)["avoid_side"], "left")
+        self._req("/api/lidar/settings", {"avoid_side": "auto"})
 
     def test_move_sim_box(self):
         code, _ = self._req("/api/lidar/sim", {"x": 100, "y": 0})

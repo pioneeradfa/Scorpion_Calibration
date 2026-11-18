@@ -361,13 +361,29 @@ def assess(points, travel, stop_mm, warn_mm):
     return {"status": status, "nearest_mm": None if nearest is None else round(nearest)}
 
 
-def clearer_side(points, stop_mm):
-    """Which way to turn in place to get away from an obstacle ahead: 'left', 'right', or None if both sides are blocked."""
+AVOID_SIDES = ("auto", "left", "right")
+
+
+def clearer_side(points, stop_mm, prefer="auto"):
+    """Which way to turn in place to get away from an obstacle ahead: 'left', 'right', or None if both sides are blocked.
+    prefer: 'left' or 'right' uses that side when it is clear (the other side otherwise); 'auto' uses the clearer side."""
     left = [math.hypot(x, y) for x, y in points if x > 0 and y > 0]
     right = [math.hypot(x, y) for x, y in points if x > 0 and y < 0]
     l_min = min(left, default=float("inf"))
     r_min = min(right, default=float("inf"))
-    if max(l_min, r_min) <= stop_mm:
+    left_ok = l_min > stop_mm
+    right_ok = r_min > stop_mm
+    if prefer in ("left", "right"):
+        if prefer == "left" and left_ok:
+            return "left"
+        if prefer == "right" and right_ok:
+            return "right"
+        if prefer == "left" and right_ok:
+            return "right"
+        if prefer == "right" and left_ok:
+            return "left"
+        return None
+    if not (left_ok or right_ok):
         return None
     return "left" if l_min >= r_min else "right"
 
@@ -385,13 +401,15 @@ class SafetyStop(Exception):
 
 
 class Settings:
-    def __init__(self, stop_mm=DEFAULT_STOP_MM, warn_mm=DEFAULT_WARN_MM, avoid=False):
+    def __init__(self, stop_mm=DEFAULT_STOP_MM, warn_mm=DEFAULT_WARN_MM, avoid=True, avoid_side="auto"):
         self.stop_mm = float(stop_mm)
         self.warn_mm = float(warn_mm)
-        self.avoid = bool(avoid)
+        self.avoid = bool(avoid)                 # turn away from an obstacle instead of only stopping
+        self.avoid_side = avoid_side if avoid_side in AVOID_SIDES else "auto"
 
     def as_dict(self):
-        return {"stop_mm": self.stop_mm, "warn_mm": self.warn_mm, "avoid": self.avoid}
+        return {"stop_mm": self.stop_mm, "warn_mm": self.warn_mm, "avoid": self.avoid,
+                "avoid_side": self.avoid_side}
 
 
 class LidarWalker(wg.Walker):
@@ -513,7 +531,7 @@ class LidarWalker(wg.Walker):
                 sg.move_to_pose(bus, p["pose"], move_ms=p["pose_ms"], legs=legs)
                 self._note("at walking stand '%s'" % p["pose"])
 
-            avoidable = self.settings.avoid and p["direction"] in ("forward", "backward")
+            avoidable = self.settings.avoid and p["direction"] not in ("left", "right")
             done = 0
             turns = 0
             need_glide = True
@@ -529,7 +547,7 @@ class LidarWalker(wg.Walker):
                 except SafetyStop as exc:
                     if not avoidable or exc.kind != "blocked" or turns >= MAX_AVOID_TURNS:
                         raise
-                    side = clearer_side(exc.points, self.settings.stop_mm)
+                    side = clearer_side(exc.points, self.settings.stop_mm, self.settings.avoid_side)
                     if side is None:
                         raise SafetyStop("blocked", "obstacle ahead and no clear side: walk stopped")
                     turns += 1
@@ -591,6 +609,11 @@ LIDAR_CARD = r"""
     <div><label for="lWarn">Warn distance (mm)</label><input type="number" id="lWarn" min="200" max="4000" step="10"></div>
   </div>
   <label class="checkrow"><input type="checkbox" id="lAvoid"> Turn away from obstacles (stop, turn, check again)</label>
+  <div class="row" style="margin-top:6px">
+    <div><label for="lSide">Turn away to</label>
+      <select id="lSide"><option value="auto">clearer side (auto)</option><option value="left">left when clear</option><option value="right">right when clear</option></select>
+    </div>
+  </div>
   <div class="hint">Joint angles of each walk are saved as CSV (see walk_log.py). Latest: <a id="logLink" href="#">none yet</a> &middot; <a href="/api/walk_logs" target="_blank">all walks</a></div>
   <div class="hint">Stopping is always on: a blocked way stops the walk even when turn-away is off. The distance is from the body centre; the legs reach about <span id="lFoot">-</span> mm.</div>
   <div class="simbox" id="simBox" style="display:none">
@@ -686,6 +709,7 @@ LIDAR_JS = r"""
       $L("lStop").value = d.settings.stop_mm;
       $L("lWarn").value = d.settings.warn_mm;
       $L("lAvoid").checked = d.settings.avoid;
+      $L("lSide").value = d.settings.avoid_side;
       if (d.sim) { $L("simX").value = d.sim[0]; $L("simY").value = d.sim[1]; }
       settingsReady = true;
     }
@@ -702,13 +726,14 @@ LIDAR_JS = r"""
 
   async function saveSettings() {
     try {
-      await call("/api/lidar/settings", {stop_mm: parseFloat($L("lStop").value), warn_mm: parseFloat($L("lWarn").value), avoid: $L("lAvoid").checked});
+      await call("/api/lidar/settings", {stop_mm: parseFloat($L("lStop").value), warn_mm: parseFloat($L("lWarn").value), avoid: $L("lAvoid").checked, avoid_side: $L("lSide").value});
       settingsReady = false;
     } catch (e) { alert(e.message); }
   }
 
   ["lStop", "lWarn"].forEach(id => $L(id).addEventListener("change", saveSettings));
   $L("lAvoid").addEventListener("change", saveSettings);
+  $L("lSide").addEventListener("change", saveSettings);
   $L("simApply").addEventListener("click", async () => {
     try { await call("/api/lidar/sim", {x: parseFloat($L("simX").value), y: parseFloat($L("simY").value)}); }
     catch (e) { alert(e.message); }
@@ -838,6 +863,10 @@ class LidarHandler(wg.Handler):
                     raise wg.ParamError("warn distance must be above the stop distance and at most 4000 mm")
                 s.stop_mm, s.warn_mm = stop, warn
                 s.avoid = bool(data.get("avoid", s.avoid))
+                side = data.get("avoid_side", s.avoid_side)
+                if side not in AVOID_SIDES:
+                    raise wg.ParamError("turn side must be auto, left or right")
+                s.avoid_side = side
                 self._json(200, s.as_dict())
             else:
                 if not STATE["source"].simulated:
@@ -982,6 +1011,10 @@ def main(argv=None):
                         help="print what the LiDAR sees for SECONDS, then exit")
     parser.add_argument("--lidar-calibrate", action="store_true",
                         help="find --lidar-yaw and --lidar-dir: place one object in front, then on the left")
+    parser.add_argument("--no-turn-away", action="store_true",
+                        help="only stop at an obstacle (turn-away is on by default; the page can change it)")
+    parser.add_argument("--turn-side", default="auto", choices=AVOID_SIDES,
+                        help="side to turn away to when clear (default auto = the clearer side)")
     parser.add_argument("--stop-mm", type=float, default=DEFAULT_STOP_MM)
     parser.add_argument("--warn-mm", type=float, default=DEFAULT_WARN_MM)
     args = parser.parse_args(argv)
@@ -1003,7 +1036,7 @@ def main(argv=None):
     if args.lidar_calibrate:
         return calibrate(source)
 
-    setup(source, Settings(args.stop_mm, args.warn_mm, avoid=False))
+    setup(source, Settings(args.stop_mm, args.warn_mm, avoid=not args.no_turn_away, avoid_side=args.turn_side))
     server = make_server(args.host, args.port)
     where = "SIMULATED LiDAR, walking disabled" if source.simulated else args.lidar_port
     print("Scorpion walk panel with LiDAR: http://%s:%d  (%s, Ctrl+C to quit)" % (args.host, args.port, where))
