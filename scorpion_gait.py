@@ -97,27 +97,18 @@ SERVO_IDS = {
     "LF": [24, 23, 22], "LM": [13, 14, 15], "LR": [10, 11, 12],
 }
 
-# Claws: separate servos, not part of the legs (channels from stand_sit_walk_tail_claw_belly.py).
-CLAW_PINS = {"right": 28, "left": 25}
-# Raw angle per claw for each pose, same scale as the legs (per-claw calibration from the legacy script)
+# Hand claws and tail claw: separate SG90 micro servos on the Hiwonder controller, not part of the legs.
+CLAW_PINS = {"right": 16, "left": 17}      # right and left hand claws
+TAIL_CLAW_PIN = 6                          # tail claw (one servo)
+# Raw angle per hand claw for each pose (per-claw calibration from stand_sit_walk_tail_claw_belly.py)
 CLAW_POSES = {
     "open":   {"right": 90, "left": 90},
     "closed": {"right": 30, "left": 150},
     "grip":   {"right": 20, "left": 170},
 }
-
-# Tail: four servos (channels from stand_sit_walk_tail_claw_belly.py), raw angles in pin order.
-# Same raw 0-180 scale and pulse mapping as the legs; no mirror. Not yet checked on the robot.
-TAIL_PINS = [21, 20, 7, 6]
-TAIL_POSES = {
-    "neutral": [90, 90, 60, 60],
-    "raised":  [90, 110, 130, 120],
-    "curl":    [90, 120, 30, 130],
-    "strike":  [90, 70, 50, 10],
-    "down":    [90, 130, 150, 140],
-}
-# The wave (legacy tail_wave): these two frames alternate, 300 ms each, three times, then neutral.
-TAIL_WAVE_FRAMES = ([70, 110, 130, 150], [110, 110, 130, 150])
+# Tail claw raw angle per pose. PROVISIONAL: copied from the right hand claw, not yet checked on the
+# tail claw. Set the real values after a check on the robot.
+TAIL_CLAW_POSES = {"open": 90, "closed": 30}
 
 # Coxa-axis mount in the body frame (skills 2.2), mm
 MOUNT = {
@@ -573,10 +564,9 @@ class DryRunBus:
         for side, raw in angles.items():
             self.commands.append((CLAW_PINS[side], pulse_us(raw), move_ms))
 
-    def send_tail(self, angles, move_ms):
-        """angles: four raw angles in TAIL_PINS order."""
-        for pin, raw in zip(TAIL_PINS, angles):
-            self.commands.append((pin, pulse_us(raw), move_ms))
+    def send_tail(self, raw, move_ms):
+        """raw: the tail claw's raw angle."""
+        self.commands.append((TAIL_CLAW_PIN, pulse_us(raw), move_ms))
 
 
 class ServoControlBus:
@@ -598,9 +588,8 @@ class ServoControlBus:
         for side, raw in angles.items():
             self._sc.setPWMServoMove(CLAW_PINS[side], pulse_us(raw), move_ms)
 
-    def send_tail(self, angles, move_ms):
-        for pin, raw in zip(TAIL_PINS, angles):
-            self._sc.setPWMServoMove(pin, pulse_us(raw), move_ms)
+    def send_tail(self, raw, move_ms):
+        self._sc.setPWMServoMove(TAIL_CLAW_PIN, pulse_us(raw), move_ms)
 
 
 def set_active_pose(pose):

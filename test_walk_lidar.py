@@ -438,18 +438,18 @@ class PageAndRouteTests(unittest.TestCase):
         self.assertIn('id="cObs"', text)
 
     def test_tail_routes_and_page_validate(self):
-        code, _ = self._req("/api/tail", {"pose": "wiggle"})
+        code, _ = self._req("/api/tail", {"pose": "wave"})
         self.assertEqual(code, 400)
         code, _ = self._req("/api/lidar/settings", {"tail_end": "wave"})
         self.assertEqual(code, 400)
-        code, body = self._req("/api/lidar/settings", {"tail_end": "down"})
+        code, body = self._req("/api/lidar/settings", {"tail_end": "open"})
         self.assertEqual(code, 200)
-        self.assertEqual(json.loads(body)["tail_end"], "down")
-        self._req("/api/lidar/settings", {"tail_end": "neutral"})
+        self.assertEqual(json.loads(body)["tail_end"], "open")
+        self._req("/api/lidar/settings", {"tail_end": "keep"})
         code, body = self._req("/")
         text = body.decode()
         self.assertIn('id="tailCard"', text)
-        self.assertIn('data-tail="wave"', text)
+        self.assertIn('data-tail="closed"', text)
         self.assertIn('id="tObs"', text)
 
     def test_move_sim_box(self):
@@ -564,7 +564,8 @@ class ClawTests(unittest.TestCase):
 
 
 class TailTests(unittest.TestCase):
-    """Tail: moved at walk start, end and on an obstacle stop, and by the buttons. Dry run only."""
+    """Tail claw (one SG90 on pin 6): moved at walk start, end and on an obstacle stop, and by the buttons.
+    Dry run only."""
 
     def _run(self, source, **settings_kw):
         p = params(cycles=1)
@@ -580,15 +581,15 @@ class TailTests(unittest.TestCase):
 
     @staticmethod
     def _tail_commands(bus):
-        return [(pin, pulse) for (pin, pulse, _ms) in bus.commands if pin in sg.TAIL_PINS]
+        return [(pin, pulse) for (pin, pulse, _ms) in bus.commands if pin == sg.TAIL_CLAW_PIN]
 
     @staticmethod
     def _pose_commands(pose):
-        return [(pin, sg.pulse_us(raw)) for pin, raw in zip(sg.TAIL_PINS, sg.TAIL_POSES[pose])]
+        return [(sg.TAIL_CLAW_PIN, sg.pulse_us(sg.TAIL_CLAW_POSES[pose]))]
 
-    def test_tail_defaults(self):
+    def test_tail_defaults_are_keep(self):
         s = wl.Settings()
-        self.assertEqual((s.tail_start, s.tail_end, s.tail_obstacle), ("neutral", "neutral", "raised"))
+        self.assertEqual((s.tail_start, s.tail_end, s.tail_obstacle), ("keep", "keep", "keep"))
         self.assertEqual(wl.Settings(tail_end="wave").tail_end, "keep")      # wave is not a walk choice
 
     def test_tail_keep_means_no_tail_commands(self):
@@ -597,29 +598,28 @@ class TailTests(unittest.TestCase):
         self.assertEqual(w.state, "done", w.message)
         self.assertEqual(self._tail_commands(bus), [])
 
-    def test_tail_neutral_at_start_and_down_at_end(self):
+    def test_tail_open_at_start_and_closed_at_end(self):
         w, bus = self._run(wl.SimSource(wl.Mount(), box_x=5000.0),
-                           tail_start="neutral", tail_end="down", tail_obstacle="keep")
+                           tail_start="open", tail_end="closed", tail_obstacle="keep")
         self.assertEqual(w.state, "done", w.message)
-        self.assertEqual(self._tail_commands(bus), self._pose_commands("neutral") + self._pose_commands("down"))
+        self.assertEqual(self._tail_commands(bus), self._pose_commands("open") + self._pose_commands("closed"))
 
-    def test_obstacle_raises_the_tail(self):
+    def test_obstacle_closes_the_tail_claw(self):
         w, bus = self._run(ScriptedSource(block_from=5),
-                           tail_start="keep", tail_end="keep", tail_obstacle="raised")
+                           tail_start="keep", tail_end="keep", tail_obstacle="closed")
         self.assertEqual(w.state, "obstacle", w.message)
-        self.assertEqual(self._tail_commands(bus), self._pose_commands("raised"))
+        self.assertEqual(self._tail_commands(bus), self._pose_commands("closed"))
 
     def test_tail_moves_are_written_to_the_walk_log(self):
         w, _bus = self._run(wl.SimSource(wl.Mount(), box_x=5000.0),
-                            tail_start="neutral", tail_end="curl", tail_obstacle="keep")
-        rows = [r for r in w._log.rows if "tail_1_raw" in r]
-        self.assertEqual([r["tail_1_raw"] for r in rows], [90, 90])
-        self.assertEqual([r["tail_3_raw"] for r in rows], [60, 30])
-        self.assertEqual([r["tail_4_raw"] for r in rows], [60, 130])
+                            tail_start="open", tail_end="closed", tail_obstacle="keep")
+        rows = [r for r in w._log.rows if "tail_claw_raw" in r]
+        self.assertEqual([r["tail_claw_raw"] for r in rows],
+                         [sg.TAIL_CLAW_POSES["open"], sg.TAIL_CLAW_POSES["closed"]])
 
     def test_tail_button_refuses_unknown_pose(self):
         with self.assertRaises(wg.ParamError):
-            wl.tail_action("wiggle")
+            wl.tail_action("wave")
 
     def test_tail_button_refused_while_walking(self):
         w = wl.LidarWalker(wl.SimSource(wl.Mount()), wl.Settings(), bus_factory=sg.DryRunBus)
@@ -630,22 +630,26 @@ class TailTests(unittest.TestCase):
         wl.STATE["walker"] = w
         try:
             with self.assertRaises(wg.ParamError):
-                wl.tail_action("curl")
+                wl.tail_action("closed")
         finally:
             wl.STATE["walker"] = saved
             busy.join()
 
     def test_tail_button_moves_when_idle(self):
-        from unittest import mock
         w = wl.LidarWalker(wl.SimSource(wl.Mount()), wl.Settings(), bus_factory=sg.DryRunBus)
         saved = wl.STATE.get("walker")
         wl.STATE["walker"] = w
         try:
-            self.assertEqual(wl.tail_action("curl"), {"pose": "curl"})
-            with mock.patch.object(wl.time, "sleep"):                      # the wave takes about 4 s
-                self.assertEqual(wl.tail_action("wave"), {"pose": "wave"})
+            self.assertEqual(wl.tail_action("open"), {"pose": "open"})
+            self.assertEqual(wl.tail_action("closed"), {"pose": "closed"})
         finally:
             wl.STATE["walker"] = saved
+
+    def test_servo_pins_match_the_hardware(self):
+        self.assertEqual(sg.CLAW_PINS, {"right": 16, "left": 17})
+        self.assertEqual(sg.TAIL_CLAW_PIN, 6)
+        leg_ids = {i for ids in sg.SERVO_IDS.values() for i in ids}
+        self.assertFalse(leg_ids & {6, 16, 17})
 
 
 class CalibrationTests(unittest.TestCase):
