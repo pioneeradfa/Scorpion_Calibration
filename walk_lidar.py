@@ -364,8 +364,8 @@ def assess(points, travel, stop_mm, warn_mm):
 AVOID_SIDES = ("auto", "left", "right")
 CLAW_CHOICES = ("keep", "open", "closed", "grip")   # "keep" = do not move the claws
 CLAW_MOVE_MS = 400                                   # time the claw servos take to move
-TAIL_CHOICES = ("keep", "open", "closed")   # walk-routine choices for the tail claw
-TAIL_BUTTONS = ("open", "closed")           # buttons for the tail claw
+TAIL_CHOICES = ("keep", "neutral", "raised", "curl", "strike", "down")   # walk-routine choices
+TAIL_BUTTONS = ("neutral", "raised", "curl", "strike", "down", "wave")   # wave is a button only
 TAIL_MOVE_MS = 600                                   # time the tail servos take to move
 
 
@@ -408,7 +408,7 @@ class SafetyStop(Exception):
 class Settings:
     def __init__(self, stop_mm=DEFAULT_STOP_MM, warn_mm=DEFAULT_WARN_MM, avoid=True, avoid_side="auto",
                  claw_start="open", claw_end="closed", claw_obstacle="closed",
-                 tail_start="keep", tail_end="keep", tail_obstacle="keep"):
+                 tail_start="neutral", tail_end="neutral", tail_obstacle="raised"):
         self.stop_mm = float(stop_mm)
         self.warn_mm = float(warn_mm)
         self.avoid = bool(avoid)                 # turn away from an obstacle instead of only stopping
@@ -520,7 +520,7 @@ class LidarWalker(wg.Walker):
         if name not in TAIL_CHOICES or name == "keep":
             return
         try:
-            bus.send_tail(sg.TAIL_CLAW_POSES[name], TAIL_MOVE_MS)
+            bus.send_tail(list(sg.TAIL_POSES[name]), TAIL_MOVE_MS)
         except Exception as exc:  # noqa: BLE001  (a tail fault must not stop the legs' return to the stand)
             self._note("tail move failed: %s" % exc)
 
@@ -687,17 +687,21 @@ LIDAR_CARD = r"""
   <div class="hint" id="clawMsg"></div>
 </div>
 <div class="card" id="tailCard">
-  <h2>Tail claw</h2>
+  <h2>Tail</h2>
   <div class="row">
-    <div><button class="ghost" data-tail="open">Open</button></div>
-    <div><button class="ghost" data-tail="closed">Close</button></div>
+    <div><button class="ghost" data-tail="neutral">Neutral</button></div>
+    <div><button class="ghost" data-tail="raised">Raised</button></div>
+    <div><button class="ghost" data-tail="curl">Curl</button></div>
+    <div><button class="ghost" data-tail="strike">Strike</button></div>
+    <div><button class="ghost" data-tail="down">Down</button></div>
+    <div><button class="ghost" data-tail="wave">Wave</button></div>
   </div>
   <div class="row" style="margin-top:10px">
-    <div><label for="tStart">At walk start</label><select id="tStart"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option></select></div>
-    <div><label for="tEnd">At walk end</label><select id="tEnd"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option></select></div>
-    <div><label for="tObs">When an obstacle stops the walk</label><select id="tObs"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option></select></div>
+    <div><label for="tStart">At walk start</label><select id="tStart"><option value="keep">keep</option><option value="neutral">neutral</option><option value="raised">raised</option><option value="curl">curl</option><option value="strike">strike</option><option value="down">down</option></select></div>
+    <div><label for="tEnd">At walk end</label><select id="tEnd"><option value="keep">keep</option><option value="neutral">neutral</option><option value="raised">raised</option><option value="curl">curl</option><option value="strike">strike</option><option value="down">down</option></select></div>
+    <div><label for="tObs">When an obstacle stops the walk</label><select id="tObs"><option value="keep">keep</option><option value="neutral">neutral</option><option value="raised">raised</option><option value="curl">curl</option><option value="strike">strike</option><option value="down">down</option></select></div>
   </div>
-  <div class="hint">The tail claw is one SG90 servo on pin 6 and does not move the legs. Its open and closed angles are provisional until checked on the robot. Buttons ask for confirmation first.</div>
+  <div class="hint">The tail has four servos (pins 21, 20, 7, and 6 for the claw at the end) and does not move the legs. Wave is a button only, not a walk choice. Buttons ask for confirmation first.</div>
   <div class="hint" id="tailMsg"></div>
 </div>
 """
@@ -922,9 +926,9 @@ def claw_action(pose):
 
 
 def tail_action(pose):
-    """Moves the tail claw now (the buttons). Refused while a walk is running."""
+    """Moves the tail now (the buttons). Refused while a walk is running."""
     if pose not in TAIL_BUTTONS:
-        raise wg.ParamError("tail claw pose must be open or closed")
+        raise wg.ParamError("tail pose must be neutral, raised, curl, strike, down or wave")
     walker = STATE["walker"]
     if walker.busy:
         raise wg.ParamError("a walk is running: stop it first")
@@ -932,8 +936,16 @@ def tail_action(pose):
         bus = walker._bus_factory()
     except ImportError as exc:
         raise wg.ParamError(str(exc))
-    bus.send_tail(sg.TAIL_CLAW_POSES[pose], TAIL_MOVE_MS)
-    time.sleep(TAIL_MOVE_MS / 1000.0)
+    if pose == "wave":                       # legacy tail_wave(): three swings, then neutral
+        for _ in range(3):
+            for frame in sg.TAIL_WAVE_FRAMES:
+                bus.send_tail(list(frame), 300)
+                time.sleep(0.6)              # 300 ms move, 300 ms pause
+        bus.send_tail(list(sg.TAIL_POSES["neutral"]), TAIL_MOVE_MS)
+        time.sleep(TAIL_MOVE_MS / 1000.0)
+    else:
+        bus.send_tail(list(sg.TAIL_POSES[pose]), TAIL_MOVE_MS)
+        time.sleep(TAIL_MOVE_MS / 1000.0)
     return {"pose": pose}
 
 
