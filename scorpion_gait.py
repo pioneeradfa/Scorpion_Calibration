@@ -118,10 +118,9 @@ def claw_angles(pose):
         out["left"] = 180 - out["left"]
     return out
 
-# Tail: four servos (channels from stand_sit_walk_tail_claw_belly.py), raw angles in pin order.
-# The last one (pin 6) is the claw at the end of the tail.
-# Same raw 0-180 scale and pulse mapping as the legs; no mirror. Not yet checked on the robot.
-TAIL_PINS = [21, 20, 7, 6]
+# Tail motors: four servos, raw angles in pin order: 21 (base, vertical, between the body), 20, 7, 8 (horizontal).
+# The legacy table had four values per pose, last one for pin 6; now the last one is for pin 8.
+TAIL_PINS = [21, 20, 7, 8]
 TAIL_POSES = {
     "neutral": [90, 90, 60, 60],
     "raised":  [90, 110, 130, 120],
@@ -131,6 +130,10 @@ TAIL_POSES = {
 }
 # The wave (legacy tail_wave): these two frames alternate, 300 ms each, three times, then neutral.
 TAIL_WAVE_FRAMES = ([70, 110, 130, 150], [110, 110, 130, 150])
+# Tail claw: one servo on pin 6, at the end of the tail. PROVISIONAL open/closed raw angles, copied from the
+# right hand claw; check on the robot.
+TAIL_CLAW_PIN = 6
+TAIL_CLAW_POSES = {"open": 90, "closed": 30}
 
 # Coxa-axis mount in the body frame (skills 2.2), mm
 MOUNT = {
@@ -591,6 +594,9 @@ class DryRunBus:
         for pin, raw in zip(TAIL_PINS, angles):
             self.commands.append((pin, pulse_us(raw), move_ms))
 
+    def send_tail_claw(self, raw, move_ms):
+        self.commands.append((TAIL_CLAW_PIN, pulse_us(raw), move_ms))
+
 
 class ServoControlBus:
     """Sends commands with the Hiwonder ServoControl library (Raspberry Pi only)."""
@@ -614,6 +620,9 @@ class ServoControlBus:
     def send_tail(self, angles, move_ms):
         for pin, raw in zip(TAIL_PINS, angles):
             self._sc.setPWMServoMove(pin, pulse_us(raw), move_ms)
+
+    def send_tail_claw(self, raw, move_ms):
+        self._sc.setPWMServoMove(TAIL_CLAW_PIN, pulse_us(raw), move_ms)
 
 
 def set_active_pose(pose):

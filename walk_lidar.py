@@ -367,6 +367,8 @@ CLAW_MOVE_MS = 400                                   # time the claw servos take
 TAIL_CHOICES = ("keep", "neutral", "raised", "curl", "strike", "down")   # walk-routine choices
 TAIL_BUTTONS = ("neutral", "raised", "curl", "strike", "down", "wave")   # wave is a button only
 TAIL_MOVE_MS = 600                                   # time the tail servos take to move
+TAIL_CLAW_CHOICES = ("keep", "open", "closed")      # walk-routine choices for the tail claw
+TAIL_CLAW_BUTTONS = ("open", "closed")              # buttons for the tail claw
 
 
 def clearer_side(points, stop_mm, prefer="auto"):
@@ -408,7 +410,8 @@ class SafetyStop(Exception):
 class Settings:
     def __init__(self, stop_mm=DEFAULT_STOP_MM, warn_mm=DEFAULT_WARN_MM, avoid=True, avoid_side="auto",
                  claw_start="open", claw_end="closed", claw_obstacle="closed",
-                 tail_start="neutral", tail_end="neutral", tail_obstacle="raised"):
+                 tail_start="neutral", tail_end="neutral", tail_obstacle="raised",
+                 tail_claw_start="keep", tail_claw_end="keep", tail_claw_obstacle="keep"):
         self.stop_mm = float(stop_mm)
         self.warn_mm = float(warn_mm)
         self.avoid = bool(avoid)                 # turn away from an obstacle instead of only stopping
@@ -421,13 +424,18 @@ class Settings:
         self.tail_start = tail_start if tail_start in TAIL_CHOICES else "keep"
         self.tail_end = tail_end if tail_end in TAIL_CHOICES else "keep"
         self.tail_obstacle = tail_obstacle if tail_obstacle in TAIL_CHOICES else "keep"
+        # tail claw: same three points
+        self.tail_claw_start = tail_claw_start if tail_claw_start in TAIL_CLAW_CHOICES else "keep"
+        self.tail_claw_end = tail_claw_end if tail_claw_end in TAIL_CLAW_CHOICES else "keep"
+        self.tail_claw_obstacle = tail_claw_obstacle if tail_claw_obstacle in TAIL_CLAW_CHOICES else "keep"
 
     def as_dict(self):
         return {"stop_mm": self.stop_mm, "warn_mm": self.warn_mm, "avoid": self.avoid,
                 "avoid_side": self.avoid_side, "claw_start": self.claw_start,
                 "claw_end": self.claw_end, "claw_obstacle": self.claw_obstacle,
                 "tail_start": self.tail_start, "tail_end": self.tail_end,
-                "tail_obstacle": self.tail_obstacle}
+                "tail_obstacle": self.tail_obstacle, "tail_claw_start": self.tail_claw_start,
+                "tail_claw_end": self.tail_claw_end, "tail_claw_obstacle": self.tail_claw_obstacle}
 
 
 class LidarWalker(wg.Walker):
@@ -524,10 +532,20 @@ class LidarWalker(wg.Walker):
         except Exception as exc:  # noqa: BLE001  (a tail fault must not stop the legs' return to the stand)
             self._note("tail move failed: %s" % exc)
 
+    def _tail_claw_pose(self, bus, name):
+        """Moves the tail claw to a named pose ('keep' does nothing). Does not wait."""
+        if name not in TAIL_CLAW_CHOICES or name == "keep":
+            return
+        try:
+            bus.send_tail_claw(sg.TAIL_CLAW_POSES[name], TAIL_MOVE_MS)
+        except Exception as exc:  # noqa: BLE001
+            self._note("tail claw move failed: %s" % exc)
+
     def _routine(self, bus, phase):
         """Claws and tail at one point of the walk: phase is 'start', 'end' or 'obstacle'."""
         self._claw_pose(bus, getattr(self.settings, "claw_" + phase))
         self._tail_pose(bus, getattr(self.settings, "tail_" + phase))
+        self._tail_claw_pose(bus, getattr(self.settings, "tail_claw_" + phase))
 
     def _claw_pose(self, bus, name):
         """Moves both claws to a named pose ('keep' does nothing). Does not wait: the servos move by themselves."""
@@ -697,11 +715,21 @@ LIDAR_CARD = r"""
     <div><button class="ghost" data-tail="wave">Wave</button></div>
   </div>
   <div class="row" style="margin-top:10px">
-    <div><label for="tStart">At walk start</label><select id="tStart"><option value="keep">keep</option><option value="neutral">neutral</option><option value="raised">raised</option><option value="curl">curl</option><option value="strike">strike</option><option value="down">down</option></select></div>
-    <div><label for="tEnd">At walk end</label><select id="tEnd"><option value="keep">keep</option><option value="neutral">neutral</option><option value="raised">raised</option><option value="curl">curl</option><option value="strike">strike</option><option value="down">down</option></select></div>
-    <div><label for="tObs">When an obstacle stops the walk</label><select id="tObs"><option value="keep">keep</option><option value="neutral">neutral</option><option value="raised">raised</option><option value="curl">curl</option><option value="strike">strike</option><option value="down">down</option></select></div>
+    <div><label for="tStart">Motors at walk start</label><select id="tStart"><option value="keep">keep</option><option value="neutral">neutral</option><option value="raised">raised</option><option value="curl">curl</option><option value="strike">strike</option><option value="down">down</option></select></div>
+    <div><label for="tEnd">Motors at walk end</label><select id="tEnd"><option value="keep">keep</option><option value="neutral">neutral</option><option value="raised">raised</option><option value="curl">curl</option><option value="strike">strike</option><option value="down">down</option></select></div>
+    <div><label for="tObs">Motors when an obstacle stops the walk</label><select id="tObs"><option value="keep">keep</option><option value="neutral">neutral</option><option value="raised">raised</option><option value="curl">curl</option><option value="strike">strike</option><option value="down">down</option></select></div>
   </div>
-  <div class="hint">The tail has four servos (pins 21, 20, 7, and 6 for the claw at the end) and does not move the legs. Wave is a button only, not a walk choice. Buttons ask for confirmation first.</div>
+  <div class="hint"><b>Tail claw</b> (pin 6, at the end of the tail)</div>
+  <div class="row">
+    <div><button class="ghost" data-tail-claw="open">Open</button></div>
+    <div><button class="ghost" data-tail-claw="closed">Close</button></div>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <div><label for="tcStart">Claw at walk start</label><select id="tcStart"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option></select></div>
+    <div><label for="tcEnd">Claw at walk end</label><select id="tcEnd"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option></select></div>
+    <div><label for="tcObs">Claw when an obstacle stops the walk</label><select id="tcObs"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option></select></div>
+  </div>
+  <div class="hint">Four tail motors: 21 (base, vertical, between the body), 20, 7 and 8 (horizontal). The tail claw is on pin 6. None of these move the legs. The tail claw's open and closed angles are provisional until checked on the robot. Buttons ask for confirmation first.</div>
   <div class="hint" id="tailMsg"></div>
 </div>
 """
@@ -795,6 +823,9 @@ LIDAR_JS = r"""
       $L("tStart").value = d.settings.tail_start;
       $L("tEnd").value = d.settings.tail_end;
       $L("tObs").value = d.settings.tail_obstacle;
+      $L("tcStart").value = d.settings.tail_claw_start;
+      $L("tcEnd").value = d.settings.tail_claw_end;
+      $L("tcObs").value = d.settings.tail_claw_obstacle;
       if (d.sim) { $L("simX").value = d.sim[0]; $L("simY").value = d.sim[1]; }
       settingsReady = true;
     }
@@ -813,7 +844,8 @@ LIDAR_JS = r"""
     try {
       await call("/api/lidar/settings", {stop_mm: parseFloat($L("lStop").value), warn_mm: parseFloat($L("lWarn").value), avoid: $L("lAvoid").checked, avoid_side: $L("lSide").value,
         claw_start: $L("cStart").value, claw_end: $L("cEnd").value, claw_obstacle: $L("cObs").value,
-        tail_start: $L("tStart").value, tail_end: $L("tEnd").value, tail_obstacle: $L("tObs").value});
+        tail_start: $L("tStart").value, tail_end: $L("tEnd").value, tail_obstacle: $L("tObs").value,
+        tail_claw_start: $L("tcStart").value, tail_claw_end: $L("tcEnd").value, tail_claw_obstacle: $L("tcObs").value});
       settingsReady = false;
     } catch (e) { alert(e.message); }
   }
@@ -833,7 +865,8 @@ LIDAR_JS = r"""
     } catch (e) { /* ignore */ }
     setTimeout(refreshLogs, 5000);
   }
-  [["data-claw", "/api/claws", "clawMsg", "claws"], ["data-tail", "/api/tail", "tailMsg", "tail"]].forEach(([attr, path, msg, what]) => {
+  [["data-claw", "/api/claws", "clawMsg", "claws"], ["data-tail", "/api/tail", "tailMsg", "tail"],
+   ["data-tail-claw", "/api/tail_claw", "tailMsg", "tail claw"]].forEach(([attr, path, msg, what]) => {
     document.querySelectorAll("[" + attr + "]").forEach(b => b.addEventListener("click", async () => {
       const pose = b.getAttribute(attr);
       if (!confirm("Move the " + what + " (" + pose + ")? Keep fingers and objects clear.")) return;
@@ -841,7 +874,7 @@ LIDAR_JS = r"""
       catch (e) { $L(msg).textContent = e.message; }
     }));
   });
-  ["cStart", "cEnd", "cObs", "tStart", "tEnd", "tObs"].forEach(id => $L(id).addEventListener("change", saveSettings));
+  ["cStart", "cEnd", "cObs", "tStart", "tEnd", "tObs", "tcStart", "tcEnd", "tcObs"].forEach(id => $L(id).addEventListener("change", saveSettings));
   poll();
   refreshLogs();
 })();
@@ -949,6 +982,22 @@ def tail_action(pose):
     return {"pose": pose}
 
 
+def tail_claw_action(pose):
+    """Moves the tail claw now (the buttons). Refused while a walk is running."""
+    if pose not in TAIL_CLAW_BUTTONS:
+        raise wg.ParamError("tail claw pose must be open or closed")
+    walker = STATE["walker"]
+    if walker.busy:
+        raise wg.ParamError("a walk is running: stop it first")
+    try:
+        bus = walker._bus_factory()
+    except ImportError as exc:
+        raise wg.ParamError(str(exc))
+    bus.send_tail_claw(sg.TAIL_CLAW_POSES[pose], TAIL_MOVE_MS)
+    time.sleep(TAIL_MOVE_MS / 1000.0)
+    return {"pose": pose}
+
+
 class LidarHandler(wg.Handler):
     server_version = "ScorpionWalkLidar/1.0"
 
@@ -995,6 +1044,12 @@ class LidarHandler(wg.Handler):
             except (wg.ParamError, ValueError) as exc:
                 self._json(400, {"error": str(exc)})
             return
+        if path == "/api/tail_claw":
+            try:
+                self._json(200, tail_claw_action(self._body().get("pose")))
+            except (wg.ParamError, ValueError) as exc:
+                self._json(400, {"error": str(exc)})
+            return
         if path == "/api/tail":
             try:
                 self._json(200, tail_action(self._body().get("pose")))
@@ -1020,9 +1075,15 @@ class LidarHandler(wg.Handler):
                 if side not in AVOID_SIDES:
                     raise wg.ParamError("turn side must be auto, left or right")
                 s.avoid_side = side
-                for key in ("claw_start", "claw_end", "claw_obstacle", "tail_start", "tail_end", "tail_obstacle"):
+                for key in ("claw_start", "claw_end", "claw_obstacle", "tail_start", "tail_end", "tail_obstacle",
+                            "tail_claw_start", "tail_claw_end", "tail_claw_obstacle"):
                     if key in data:
-                        choices = CLAW_CHOICES if key.startswith("claw") else TAIL_CHOICES
+                        if key.startswith("claw"):
+                            choices = CLAW_CHOICES
+                        elif key.startswith("tail_claw"):
+                            choices = TAIL_CLAW_CHOICES
+                        else:
+                            choices = TAIL_CHOICES
                         if data[key] not in choices:
                             raise wg.ParamError("%s must be one of %s" % (key, ", ".join(choices)))
                         setattr(s, key, data[key])
