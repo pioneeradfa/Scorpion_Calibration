@@ -534,7 +534,7 @@ class LidarWalker(wg.Walker):
         if name not in CLAW_CHOICES or name == "keep":
             return
         try:
-            bus.send_claws(dict(sg.CLAW_POSES[name]), CLAW_MOVE_MS)
+            bus.send_claws(sg.claw_angles(name), CLAW_MOVE_MS)
         except Exception as exc:  # noqa: BLE001  (a claw fault must not stop the legs' return to the stand)
             self._note("claw move failed: %s" % exc)
 
@@ -917,10 +917,10 @@ def claw_action(pose):
         raise wg.ParamError(str(exc))
     if pose == "snap":                       # open, grip, close: the legacy claw snap
         for name, ms in (("open", 150), ("grip", 120), ("closed", CLAW_MOVE_MS)):
-            bus.send_claws(dict(sg.CLAW_POSES[name]), ms)
+            bus.send_claws(sg.claw_angles(name), ms)
             time.sleep(ms / 1000.0)
     else:
-        bus.send_claws(dict(sg.CLAW_POSES[pose]), CLAW_MOVE_MS)
+        bus.send_claws(sg.claw_angles(pose), CLAW_MOVE_MS)
         time.sleep(CLAW_MOVE_MS / 1000.0)
     return {"pose": pose}
 

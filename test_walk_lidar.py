@@ -497,7 +497,7 @@ class ClawTests(unittest.TestCase):
 
     @staticmethod
     def _pose_commands(pose):
-        return [(sg.CLAW_PINS[side], sg.pulse_us(sg.CLAW_POSES[pose][side])) for side in ("right", "left")]
+        return [(sg.CLAW_PINS[side], sg.pulse_us(sg.claw_angles(pose)[side])) for side in ("right", "left")]
 
     def test_claws_keep_means_no_claw_commands(self):
         w, bus = self._run(wl.SimSource(wl.Mount(), box_x=5000.0),
@@ -525,7 +525,7 @@ class ClawTests(unittest.TestCase):
                             claw_start="open", claw_end="closed", claw_obstacle="keep")
         claw_rows = [r for r in w._log.rows if "claw_right_raw" in r]
         self.assertEqual([r["claw_right_raw"] for r in claw_rows], [90, 30])
-        self.assertEqual([r["claw_left_raw"] for r in claw_rows], [90, 150])
+        self.assertEqual([r["claw_left_raw"] for r in claw_rows], [90, 30])     # left mirrored: 180 - 150
         self.assertEqual(claw_rows[0]["claw_right_deg"], round(90 * sg.PHYS_PER_RAW, 2))
 
     def test_settings_reject_unknown_claw_choice(self):
@@ -551,6 +551,12 @@ class ClawTests(unittest.TestCase):
         finally:
             wl.STATE["walker"] = saved
             busy.join()
+
+    def test_left_claw_is_mirrored_for_the_same_pose(self):
+        self.assertEqual(sg.claw_angles("open"), {"right": 90, "left": 90})
+        self.assertEqual(sg.claw_angles("closed"), {"right": 30, "left": 30})
+        self.assertEqual(sg.claw_angles("grip"), {"right": 20, "left": 10})
+        self.assertEqual(sg.CLAW_POSES["closed"]["left"], 150)          # the stored table is not changed
 
     def test_servo_pins_match_the_hardware(self):
         self.assertEqual(sg.CLAW_PINS, {"right": 16, "left": 17})

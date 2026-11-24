@@ -105,6 +105,18 @@ CLAW_POSES = {
     "closed": {"right": 30, "left": 150},
     "grip":   {"right": 20, "left": 170},
 }
+# The left claw is mounted mirrored: the same command moves it the opposite way to the right claw
+# (seen on the robot: open made the left claw close). With True, the left claw gets 180 - angle.
+# Set False if the left claw moves the same way as the right.
+CLAW_MIRROR_LEFT = True
+
+
+def claw_angles(pose):
+    """Raw angles sent to the two hand claws for a named pose, with the left-claw mirror applied."""
+    out = dict(CLAW_POSES[pose])
+    if CLAW_MIRROR_LEFT:
+        out["left"] = 180 - out["left"]
+    return out
 
 # Tail: four servos (channels from stand_sit_walk_tail_claw_belly.py), raw angles in pin order.
 # The last one (pin 6) is the claw at the end of the tail.
