@@ -729,7 +729,7 @@ LIDAR_CARD = r"""
     <div><label for="tcEnd">Claw at walk end</label><select id="tcEnd"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option></select></div>
     <div><label for="tcObs">Claw when an obstacle stops the walk</label><select id="tcObs"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option></select></div>
   </div>
-  <div class="hint">Four tail motors: 21 (base, vertical, between the body), 20, 7 and 8 (horizontal). The tail claw is on pin 6. None of these move the legs. The tail claw's open and closed angles are provisional until checked on the robot. Buttons ask for confirmation first.</div>
+  <div class="hint">Four tail motors: 20 turns the tail left and right; 21 (base, between the body), 7 and 8 fold it forward and backward. The tail claw is on pin 6. None of these move the legs. The tail claw's open and closed angles are provisional until checked on the robot. Buttons ask for confirmation first.</div>
   <div class="hint" id="tailMsg"></div>
 </div>
 """

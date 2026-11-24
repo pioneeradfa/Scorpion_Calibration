@@ -118,7 +118,9 @@ def claw_angles(pose):
         out["left"] = 180 - out["left"]
     return out
 
-# Tail motors: four servos, raw angles in pin order: 21 (base, vertical, between the body), 20, 7, 8 (horizontal).
+# Tail motors: four servos, raw angles in pin order: 21, 20, 7, 8.
+# Roles (from the robot): pin 20 turns the tail left and right (yaw). Pins 21 (base, between the body), 7 and 8
+# fold the tail forward and backward (pitch).
 # The legacy table had four values per pose, last one for pin 6; now the last one is for pin 8.
 TAIL_PINS = [21, 20, 7, 8]
 TAIL_POSES = {
