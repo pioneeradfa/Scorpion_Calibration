@@ -368,7 +368,8 @@ CLAW_CHOICES = ("keep", "open", "closed", "grip")   # "keep" = do not move the c
 CLAW_MOVE_MS = 400                                   # time the claw servos take to move
 TAIL_CHOICES = ("keep", "neutral", "raised", "curl", "strike", "down")   # walk-routine choices
 TAIL_BUTTONS = ("neutral", "raised", "curl", "strike", "down", "wave")   # wave is a button only
-TAIL_MOVE_MS = 600                                   # time the tail servos take to move
+TAIL_MOVE_MS = 1500                                  # time the tail servos take to move (slowed from 600 ms)
+TAIL_WAVE_MS = 600                                   # each wave swing takes this long, then the same pause
 CLAW_WALK_CHOICES = ("keep", "open_close")   # hand claws while walking: open and close after each cycle
 TAIL_CLAW_CHOICES = ("keep", "open", "closed", "grip")   # walk-routine choices for the tail claw
 TAIL_CLAW_BUTTONS = ("open", "closed", "grip", "snap")   # buttons for the tail claw (snap = open, grip, close)
@@ -989,8 +990,8 @@ def tail_action(pose):
     if pose == "wave":                       # legacy tail_wave(): three swings, then neutral
         for _ in range(3):
             for frame in sg.TAIL_WAVE_FRAMES:
-                bus.send_tail(list(frame), 300)
-                time.sleep(0.6)              # 300 ms move, 300 ms pause
+                bus.send_tail(list(frame), TAIL_WAVE_MS)
+                time.sleep(2 * TAIL_WAVE_MS / 1000.0)   # the move, then the same pause
         bus.send_tail(list(sg.TAIL_POSES["neutral"]), TAIL_MOVE_MS)
         time.sleep(TAIL_MOVE_MS / 1000.0)
     else:

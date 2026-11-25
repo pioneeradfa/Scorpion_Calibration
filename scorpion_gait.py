@@ -127,13 +127,15 @@ TAIL_POSES = {
     "neutral": [90, 90, 60, 60],
     "raised":  [90, 110, 130, 120],
     "curl":    [90, 120, 30, 130],
-    # strike and down are half-way from neutral, provisional: the full legacy values (strike [90, 70, 50, 10],
-    # down [90, 130, 150, 140]) put the tail claw into the body and the ground on the robot.
+    # strike and down are provisional. The full legacy values (strike [90, 70, 50, 10], down [90, 130, 150, 140])
+    # put the tail claw into the body and the ground on the robot. Down was then pulled back about a third
+    # toward neutral on pins 7 and 8 (the claw still touched the ground at [90, 110, 105, 100]).
     "strike":  [90, 80, 55, 35],
-    "down":    [90, 110, 105, 100],
+    "down":    [90, 110, 90, 85],
 }
-# The wave (legacy tail_wave): these two frames alternate, 300 ms each, three times, then neutral.
-TAIL_WAVE_FRAMES = ([70, 110, 130, 150], [110, 110, 130, 150])
+# The wave swings only the yaw motor (pin 20) about neutral; pins 21, 7 and 8 stay at the neutral position.
+# These two frames alternate three times, then the tail returns to neutral.
+TAIL_WAVE_FRAMES = ([90, 70, 60, 60], [90, 110, 60, 60])
 # Tail claw: one servo on pin 6, at the end of the tail. PROVISIONAL open, closed and grip raw angles, copied
 # from the right hand claw; check on the robot.
 TAIL_CLAW_PIN = 6

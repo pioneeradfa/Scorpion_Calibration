@@ -745,6 +745,32 @@ class TailTests(unittest.TestCase):
             wl.STATE["walker"] = saved
 
 
+    def test_wave_swings_only_yaw_and_stays_at_neutral(self):
+        neutral = sg.TAIL_POSES["neutral"]
+        for frame in sg.TAIL_WAVE_FRAMES:
+            self.assertEqual(frame[0], neutral[0])            # pin 21 (base) stays at neutral
+            self.assertEqual(frame[2:], neutral[2:])          # pins 7 and 8 stay at neutral
+        self.assertNotEqual(sg.TAIL_WAVE_FRAMES[0][1], sg.TAIL_WAVE_FRAMES[1][1])   # pin 20 (yaw) swings
+
+    def test_tail_moves_are_slow(self):
+        self.assertGreaterEqual(wl.TAIL_MOVE_MS, 1500)
+        self.assertGreaterEqual(wl.TAIL_WAVE_MS, 600)
+
+    def test_wave_sleeps_for_move_and_pause(self):
+        from unittest import mock
+        w = wl.LidarWalker(wl.SimSource(wl.Mount()), wl.Settings(stop_mm=427, warn_mm=677), bus_factory=sg.DryRunBus)
+        saved = wl.STATE.get("walker")
+        wl.STATE["walker"] = w
+        try:
+            with mock.patch.object(wl.time, "sleep") as sleep:
+                wl.tail_action("wave")
+            waits = [c.args[0] for c in sleep.call_args_list]
+            self.assertEqual(len(waits), 6 + 1)                 # three swings of two frames, then the return to neutral
+            self.assertAlmostEqual(waits[0], 2 * wl.TAIL_WAVE_MS / 1000.0)
+        finally:
+            wl.STATE["walker"] = saved
+
+
 class CalibrationTests(unittest.TestCase):
 
     def test_solver_finds_yaw_and_direction(self):
