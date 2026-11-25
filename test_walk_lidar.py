@@ -204,7 +204,7 @@ class ZoneTests(unittest.TestCase):
         self.assertEqual(wl.clearer_side([(300, 150), (300, -600)], 427), "right")
 
     def test_default_distances(self):
-        self.assertGreater(wl.DEFAULT_STOP_MM, wl.FOOTPRINT_MM)
+        self.assertEqual((wl.DEFAULT_STOP_MM, wl.DEFAULT_WARN_MM), (250, 450))
         self.assertGreater(wl.DEFAULT_WARN_MM, wl.DEFAULT_STOP_MM)
         self.assertAlmostEqual(wl.HALF_WIDTH_MM, 248 + wl.MARGIN_MM, delta=1.0)
 
@@ -232,7 +232,7 @@ class WalkStartTests(unittest.TestCase):
         self.bus_calls = []
 
     def _walker(self, source, avoid=False):
-        return wl.LidarWalker(source, wl.Settings(avoid=avoid), bus_factory=sg.DryRunBus)
+        return wl.LidarWalker(source, wl.Settings(stop_mm=427, warn_mm=677, avoid=avoid), bus_factory=sg.DryRunBus)
 
     def test_refuses_without_yes(self):
         w = self._walker(fresh_source())
@@ -278,7 +278,7 @@ class WalkRunTests(unittest.TestCase):
 
     def _run(self, source, walker_avoid=False, side="auto", **pkw):
         p = params(**pkw)
-        w = wl.LidarWalker(source, wl.Settings(avoid=walker_avoid, avoid_side=side), bus_factory=sg.DryRunBus)
+        w = wl.LidarWalker(source, wl.Settings(stop_mm=427, warn_mm=677, avoid=walker_avoid, avoid_side=side), bus_factory=sg.DryRunBus)
         bus = sg.DryRunBus()
         gait = wg.build_gait(p)
         legs = None
@@ -353,7 +353,7 @@ class TurnAwayTests(unittest.TestCase):
         self.assertIn("turning right", log)
 
     def test_settings_default_is_turn_away_on(self):
-        s = wl.Settings()
+        s = wl.Settings(stop_mm=427, warn_mm=677)
         self.assertTrue(s.avoid)
         self.assertEqual(s.avoid_side, "auto")
 
@@ -492,7 +492,7 @@ class ClawTests(unittest.TestCase):
 
     def _run(self, source, **settings_kw):
         p = params(cycles=1)
-        w = wl.LidarWalker(source, wl.Settings(avoid=False, **settings_kw), bus_factory=sg.DryRunBus)
+        w = wl.LidarWalker(source, wl.Settings(stop_mm=427, warn_mm=677, avoid=False, **settings_kw), bus_factory=sg.DryRunBus)
         bus = sg.DryRunBus()
         gait = wg.build_gait(p)
         w._stop.clear()
@@ -516,9 +516,9 @@ class ClawTests(unittest.TestCase):
         self.assertEqual(self._claw_commands(bus), [])
 
     def test_default_claw_settings_open_at_start_and_close_at_end(self):
-        self.assertEqual(wl.Settings().claw_start, "open")
-        self.assertEqual(wl.Settings().claw_end, "closed")
-        self.assertEqual(wl.Settings().claw_obstacle, "closed")
+        self.assertEqual(wl.Settings(stop_mm=427, warn_mm=677).claw_start, "open")
+        self.assertEqual(wl.Settings(stop_mm=427, warn_mm=677).claw_end, "closed")
+        self.assertEqual(wl.Settings(stop_mm=427, warn_mm=677).claw_obstacle, "closed")
         w, bus = self._run(wl.SimSource(wl.Mount(), box_x=5000.0),
                            claw_start="open", claw_end="closed", claw_obstacle="keep")
         self.assertEqual(w.state, "done", w.message)
@@ -539,7 +539,7 @@ class ClawTests(unittest.TestCase):
         self.assertEqual(claw_rows[0]["claw_right_deg"], round(90 * sg.PHYS_PER_RAW, 2))
 
     def test_settings_reject_unknown_claw_choice(self):
-        s = wl.Settings(claw_start="wave", claw_end="grip", claw_obstacle="open")
+        s = wl.Settings(stop_mm=427, warn_mm=677, claw_start="wave", claw_end="grip", claw_obstacle="open")
         self.assertEqual(s.claw_start, "keep")
         self.assertEqual(s.claw_end, "grip")
         self.assertEqual(s.as_dict()["claw_obstacle"], "open")
@@ -549,7 +549,7 @@ class ClawTests(unittest.TestCase):
             wl.claw_action("wave")
 
     def test_claw_button_refused_while_walking(self):
-        w = wl.LidarWalker(wl.SimSource(wl.Mount()), wl.Settings(), bus_factory=sg.DryRunBus)
+        w = wl.LidarWalker(wl.SimSource(wl.Mount()), wl.Settings(stop_mm=427, warn_mm=677), bus_factory=sg.DryRunBus)
         busy = threading.Thread(target=time.sleep, args=(1.0,), daemon=True)
         busy.start()
         w._thread = busy
@@ -578,7 +578,7 @@ class ClawTests(unittest.TestCase):
         self.assertFalse(leg_ids & used)
 
     def test_claw_button_moves_claws_when_idle(self):
-        w = wl.LidarWalker(wl.SimSource(wl.Mount()), wl.Settings(), bus_factory=sg.DryRunBus)
+        w = wl.LidarWalker(wl.SimSource(wl.Mount()), wl.Settings(stop_mm=427, warn_mm=677), bus_factory=sg.DryRunBus)
         saved = wl.STATE.get("walker")
         wl.STATE["walker"] = w
         try:
@@ -593,7 +593,7 @@ class TailTests(unittest.TestCase):
 
     def _run(self, source, **settings_kw):
         p = params(cycles=1)
-        w = wl.LidarWalker(source, wl.Settings(avoid=False, claw_start="keep", claw_end="keep",
+        w = wl.LidarWalker(source, wl.Settings(stop_mm=427, warn_mm=677, avoid=False, claw_start="keep", claw_end="keep",
                                                claw_obstacle="keep", **settings_kw),
                            bus_factory=sg.DryRunBus)
         bus = sg.DryRunBus()
@@ -612,9 +612,9 @@ class TailTests(unittest.TestCase):
         return [(pin, sg.pulse_us(raw)) for pin, raw in zip(sg.TAIL_PINS, sg.TAIL_POSES[pose])]
 
     def test_tail_defaults(self):
-        s = wl.Settings()
+        s = wl.Settings(stop_mm=427, warn_mm=677)
         self.assertEqual((s.tail_start, s.tail_end, s.tail_obstacle), ("neutral", "neutral", "raised"))
-        self.assertEqual(wl.Settings(tail_end="wave").tail_end, "keep")      # wave is not a walk choice
+        self.assertEqual(wl.Settings(stop_mm=427, warn_mm=677, tail_end="wave").tail_end, "keep")      # wave is not a walk choice
 
     def test_tail_keep_means_no_tail_commands(self):
         w, bus = self._run(wl.SimSource(wl.Mount(), box_x=5000.0),
@@ -662,8 +662,8 @@ class TailTests(unittest.TestCase):
     def test_tail_claw_button_and_settings(self):
         with self.assertRaises(wg.ParamError):
             wl.tail_claw_action("grip")
-        self.assertEqual(wl.Settings(tail_claw_end="grip").tail_claw_end, "keep")
-        w = wl.LidarWalker(wl.SimSource(wl.Mount()), wl.Settings(), bus_factory=sg.DryRunBus)
+        self.assertEqual(wl.Settings(stop_mm=427, warn_mm=677, tail_claw_end="grip").tail_claw_end, "keep")
+        w = wl.LidarWalker(wl.SimSource(wl.Mount()), wl.Settings(stop_mm=427, warn_mm=677), bus_factory=sg.DryRunBus)
         saved = wl.STATE.get("walker")
         wl.STATE["walker"] = w
         try:
@@ -676,7 +676,7 @@ class TailTests(unittest.TestCase):
             wl.tail_action("wiggle")
 
     def test_tail_button_refused_while_walking(self):
-        w = wl.LidarWalker(wl.SimSource(wl.Mount()), wl.Settings(), bus_factory=sg.DryRunBus)
+        w = wl.LidarWalker(wl.SimSource(wl.Mount()), wl.Settings(stop_mm=427, warn_mm=677), bus_factory=sg.DryRunBus)
         busy = threading.Thread(target=time.sleep, args=(1.0,), daemon=True)
         busy.start()
         w._thread = busy
@@ -691,7 +691,7 @@ class TailTests(unittest.TestCase):
 
     def test_tail_button_moves_when_idle(self):
         from unittest import mock
-        w = wl.LidarWalker(wl.SimSource(wl.Mount()), wl.Settings(), bus_factory=sg.DryRunBus)
+        w = wl.LidarWalker(wl.SimSource(wl.Mount()), wl.Settings(stop_mm=427, warn_mm=677), bus_factory=sg.DryRunBus)
         saved = wl.STATE.get("walker")
         wl.STATE["walker"] = w
         try:

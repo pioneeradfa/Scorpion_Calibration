@@ -69,8 +69,10 @@ AVOID_TURN_CYCLES = 3     # gait cycles per turn-away (about 55 degrees at the d
 # Robot footprint from the leg geometry (the leg feet reach further than the body)
 FOOTPRINT_MM = max(math.hypot(sg.LEGS[n].neutral[0], sg.LEGS[n].neutral[1]) for n in sg.LEG_ORDER)
 HALF_WIDTH_MM = max(abs(sg.LEGS[n].neutral[1]) for n in sg.LEG_ORDER) + MARGIN_MM
-DEFAULT_STOP_MM = round(FOOTPRINT_MM + 150)
-DEFAULT_WARN_MM = DEFAULT_STOP_MM + 250
+# Set by the user (2026-11-18): 250 mm stop, 450 mm warn. The stop is INSIDE the footprint (FOOTPRINT_MM,
+# about 277 mm), so an obstacle can reach the legs before the walk stops. The page can change it.
+DEFAULT_STOP_MM = 250
+DEFAULT_WARN_MM = 450
 
 
 #---------------------------------------------------------------------------------
@@ -702,6 +704,17 @@ LIDAR_CARD = r"""
     <div><label for="cObs">When an obstacle stops the walk</label><select id="cObs"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option><option value="grip">grip</option></select></div>
   </div>
   <div class="hint">The hand claws are SG90 servos (right pin 16, left pin 17) and do not move the legs. "keep" means no move. Buttons ask for confirmation first.</div>
+  <div class="hint">Tail claw (pin 6, at the end of the tail). Its walk choices are in the same card.</div>
+  <div class="hint"><b>Tail claw</b> (pin 6, at the end of the tail)</div>
+  <div class="row">
+    <div><button class="ghost" data-tail-claw="open">Open</button></div>
+    <div><button class="ghost" data-tail-claw="closed">Close</button></div>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <div><label for="tcStart">Claw at walk start</label><select id="tcStart"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option></select></div>
+    <div><label for="tcEnd">Claw at walk end</label><select id="tcEnd"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option></select></div>
+    <div><label for="tcObs">Claw when an obstacle stops the walk</label><select id="tcObs"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option></select></div>
+  </div>
   <div class="hint" id="clawMsg"></div>
 </div>
 <div class="card" id="tailCard">
@@ -718,16 +731,6 @@ LIDAR_CARD = r"""
     <div><label for="tStart">Motors at walk start</label><select id="tStart"><option value="keep">keep</option><option value="neutral">neutral</option><option value="raised">raised</option><option value="curl">curl</option><option value="strike">strike</option><option value="down">down</option></select></div>
     <div><label for="tEnd">Motors at walk end</label><select id="tEnd"><option value="keep">keep</option><option value="neutral">neutral</option><option value="raised">raised</option><option value="curl">curl</option><option value="strike">strike</option><option value="down">down</option></select></div>
     <div><label for="tObs">Motors when an obstacle stops the walk</label><select id="tObs"><option value="keep">keep</option><option value="neutral">neutral</option><option value="raised">raised</option><option value="curl">curl</option><option value="strike">strike</option><option value="down">down</option></select></div>
-  </div>
-  <div class="hint"><b>Tail claw</b> (pin 6, at the end of the tail)</div>
-  <div class="row">
-    <div><button class="ghost" data-tail-claw="open">Open</button></div>
-    <div><button class="ghost" data-tail-claw="closed">Close</button></div>
-  </div>
-  <div class="row" style="margin-top:10px">
-    <div><label for="tcStart">Claw at walk start</label><select id="tcStart"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option></select></div>
-    <div><label for="tcEnd">Claw at walk end</label><select id="tcEnd"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option></select></div>
-    <div><label for="tcObs">Claw when an obstacle stops the walk</label><select id="tcObs"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option></select></div>
   </div>
   <div class="hint">Four tail motors: 20 turns the tail left and right; 21 (base, between the body), 7 and 8 fold it forward and backward. The tail claw is on pin 6. None of these move the legs. The tail claw's open and closed angles are provisional until checked on the robot. Buttons ask for confirmation first.</div>
   <div class="hint" id="tailMsg"></div>

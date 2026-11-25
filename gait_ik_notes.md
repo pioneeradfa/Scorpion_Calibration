@@ -145,9 +145,9 @@ usable, but the real sit has to be checked by eye:
 
 ## LiDAR walk: checklist before the robot moves (walk_lidar.py)
 Calibrated mount (measured on the Pi with `--lidar-calibrate`): `--lidar-yaw -87.3 --lidar-dir -1`. Keep these with your other options.
-1. Stand the robot on a clear floor, switch on, and check with `--lidar-check 5`. Nothing should be closer than the stop distance (427 mm) except a deliberate test object. If the robot's own legs or body show up at 150–427 mm, tell me before walking.
+1. Stand the robot on a clear floor, switch on, and check with `--lidar-check 5`. Nothing should be closer than the stop distance (250 mm; this is inside the 277 mm footprint, see walk_lidar.py) except a deliberate test object. If the robot's own legs or body show up at 150–250 mm, tell me before walking.
 2. Walk with no obstacle: tripod, 1 cycle, Walk on robot. Check the joint log (`walk_logs/`) and the panel.
-3. Blocked start: put an object about 350 mm in front. Walk forward must be refused, and no servo moves.
+3. Blocked start: put an object about 200 mm in front (inside the 250 mm stop). Walk forward must be refused, and no servo moves.
 4. Stop during a walk: walk 3 cycles with nothing in the way, press Stop. The robot should finish the tick and return to the walking stand.
 5. LiDAR loss: unplug the LiDAR during a walk. The walk must stop within about 0.5 s and return to the walking stand.
 6. Obstacle during a walk: move an object into the path while walking forward 1 cycle at a time. The walk must stop before the stop distance.
