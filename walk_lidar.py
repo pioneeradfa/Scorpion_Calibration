@@ -369,6 +369,7 @@ CLAW_MOVE_MS = 400                                   # time the claw servos take
 TAIL_CHOICES = ("keep", "neutral", "raised", "curl", "strike", "down")   # walk-routine choices
 TAIL_BUTTONS = ("neutral", "raised", "curl", "strike", "down", "wave")   # wave is a button only
 TAIL_MOVE_MS = 600                                   # time the tail servos take to move
+CLAW_WALK_CHOICES = ("keep", "open_close")   # hand claws while walking: open and close after each cycle
 TAIL_CLAW_CHOICES = ("keep", "open", "closed", "grip")   # walk-routine choices for the tail claw
 TAIL_CLAW_BUTTONS = ("open", "closed", "grip", "snap")   # buttons for the tail claw (snap = open, grip, close)
 
@@ -413,7 +414,7 @@ class Settings:
     def __init__(self, stop_mm=DEFAULT_STOP_MM, warn_mm=DEFAULT_WARN_MM, avoid=True, avoid_side="auto",
                  claw_start="open", claw_end="closed", claw_obstacle="closed",
                  tail_start="neutral", tail_end="neutral", tail_obstacle="raised",
-                 tail_claw_start="keep", tail_claw_end="keep", tail_claw_obstacle="keep"):
+                 tail_claw_start="keep", tail_claw_end="keep", tail_claw_obstacle="keep", claw_walk="keep"):
         self.stop_mm = float(stop_mm)
         self.warn_mm = float(warn_mm)
         self.avoid = bool(avoid)                 # turn away from an obstacle instead of only stopping
@@ -430,6 +431,7 @@ class Settings:
         self.tail_claw_start = tail_claw_start if tail_claw_start in TAIL_CLAW_CHOICES else "keep"
         self.tail_claw_end = tail_claw_end if tail_claw_end in TAIL_CLAW_CHOICES else "keep"
         self.tail_claw_obstacle = tail_claw_obstacle if tail_claw_obstacle in TAIL_CLAW_CHOICES else "keep"
+        self.claw_walk = claw_walk if claw_walk in CLAW_WALK_CHOICES else "keep"
 
     def as_dict(self):
         return {"stop_mm": self.stop_mm, "warn_mm": self.warn_mm, "avoid": self.avoid,
@@ -437,7 +439,8 @@ class Settings:
                 "claw_end": self.claw_end, "claw_obstacle": self.claw_obstacle,
                 "tail_start": self.tail_start, "tail_end": self.tail_end,
                 "tail_obstacle": self.tail_obstacle, "tail_claw_start": self.tail_claw_start,
-                "tail_claw_end": self.tail_claw_end, "tail_claw_obstacle": self.tail_claw_obstacle}
+                "tail_claw_end": self.tail_claw_end, "tail_claw_obstacle": self.tail_claw_obstacle,
+                "claw_walk": self.claw_walk}
 
 
 class LidarWalker(wg.Walker):
@@ -534,6 +537,12 @@ class LidarWalker(wg.Walker):
         except Exception as exc:  # noqa: BLE001  (a tail fault must not stop the legs' return to the stand)
             self._note("tail move failed: %s" % exc)
 
+    def _claw_walk(self, bus, cycles_done):
+        """Hand claws while walking: 'open_close' alternates open and closed after each gait cycle."""
+        if self.settings.claw_walk != "open_close":
+            return
+        self._claw_pose(bus, "open" if cycles_done % 2 == 0 else "closed")
+
     def _tail_claw_pose(self, bus, name):
         """Moves the tail claw to a named pose ('keep' does nothing). Does not wait."""
         if name not in TAIL_CLAW_CHOICES or name == "keep":
@@ -606,6 +615,7 @@ class LidarWalker(wg.Walker):
                     for _ in range(gait.steps):
                         self._send_tick(gait, bus, p, legs)
                     done += 1
+                    self._claw_walk(bus, done)
                 except SafetyStop as exc:
                     if not avoidable or exc.kind != "blocked" or turns >= MAX_AVOID_TURNS:
                         raise
@@ -702,6 +712,7 @@ LIDAR_CARD = r"""
     <div><label for="cStart">At walk start</label><select id="cStart"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option><option value="grip">grip</option></select></div>
     <div><label for="cEnd">At walk end</label><select id="cEnd"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option><option value="grip">grip</option></select></div>
     <div><label for="cObs">When an obstacle stops the walk</label><select id="cObs"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option><option value="grip">grip</option></select></div>
+    <div><label for="cWalk">Claws while walking</label><select id="cWalk"><option value="keep">keep</option><option value="open_close">open &amp; close each cycle</option></select></div>
   </div>
   <div class="hint">The hand claws are SG90 servos (right pin 16, left pin 17) and do not move the legs. "keep" means no move. Buttons ask for confirmation first.</div>
   <div class="hint">Tail claw (pin 6, at the end of the tail). Its walk choices are in the same card.</div>
@@ -825,6 +836,7 @@ LIDAR_JS = r"""
       $L("cStart").value = d.settings.claw_start;
       $L("cEnd").value = d.settings.claw_end;
       $L("cObs").value = d.settings.claw_obstacle;
+      $L("cWalk").value = d.settings.claw_walk;
       $L("tStart").value = d.settings.tail_start;
       $L("tEnd").value = d.settings.tail_end;
       $L("tObs").value = d.settings.tail_obstacle;
@@ -848,7 +860,7 @@ LIDAR_JS = r"""
   async function saveSettings() {
     try {
       await call("/api/lidar/settings", {stop_mm: parseFloat($L("lStop").value), warn_mm: parseFloat($L("lWarn").value), avoid: $L("lAvoid").checked, avoid_side: $L("lSide").value,
-        claw_start: $L("cStart").value, claw_end: $L("cEnd").value, claw_obstacle: $L("cObs").value,
+        claw_start: $L("cStart").value, claw_end: $L("cEnd").value, claw_obstacle: $L("cObs").value, claw_walk: $L("cWalk").value,
         tail_start: $L("tStart").value, tail_end: $L("tEnd").value, tail_obstacle: $L("tObs").value,
         tail_claw_start: $L("tcStart").value, tail_claw_end: $L("tcEnd").value, tail_claw_obstacle: $L("tcObs").value});
       settingsReady = false;
@@ -879,7 +891,7 @@ LIDAR_JS = r"""
       catch (e) { $L(msg).textContent = e.message; }
     }));
   });
-  ["cStart", "cEnd", "cObs", "tStart", "tEnd", "tObs", "tcStart", "tcEnd", "tcObs"].forEach(id => $L(id).addEventListener("change", saveSettings));
+  ["cStart", "cEnd", "cObs", "cWalk", "tStart", "tEnd", "tObs", "tcStart", "tcEnd", "tcObs"].forEach(id => $L(id).addEventListener("change", saveSettings));
   poll();
   refreshLogs();
 })();
@@ -1085,10 +1097,12 @@ class LidarHandler(wg.Handler):
                 if side not in AVOID_SIDES:
                     raise wg.ParamError("turn side must be auto, left or right")
                 s.avoid_side = side
-                for key in ("claw_start", "claw_end", "claw_obstacle", "tail_start", "tail_end", "tail_obstacle",
+                for key in ("claw_start", "claw_end", "claw_obstacle", "claw_walk", "tail_start", "tail_end", "tail_obstacle",
                             "tail_claw_start", "tail_claw_end", "tail_claw_obstacle"):
                     if key in data:
-                        if key.startswith("claw"):
+                        if key == "claw_walk":
+                            choices = CLAW_WALK_CHOICES
+                        elif key.startswith("claw"):
                             choices = CLAW_CHOICES
                         elif key.startswith("tail_claw"):
                             choices = TAIL_CLAW_CHOICES

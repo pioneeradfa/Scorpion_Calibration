@@ -127,8 +127,10 @@ TAIL_POSES = {
     "neutral": [90, 90, 60, 60],
     "raised":  [90, 110, 130, 120],
     "curl":    [90, 120, 30, 130],
-    "strike":  [90, 70, 50, 10],
-    "down":    [90, 130, 150, 140],
+    # strike and down are half-way from neutral, provisional: the full legacy values (strike [90, 70, 50, 10],
+    # down [90, 130, 150, 140]) put the tail claw into the body and the ground on the robot.
+    "strike":  [90, 80, 55, 35],
+    "down":    [90, 110, 105, 100],
 }
 # The wave (legacy tail_wave): these two frames alternate, 300 ms each, three times, then neutral.
 TAIL_WAVE_FRAMES = ([70, 110, 130, 150], [110, 110, 130, 150])

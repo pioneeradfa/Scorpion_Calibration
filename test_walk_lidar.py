@@ -462,6 +462,15 @@ class PageAndRouteTests(unittest.TestCase):
         self.assertIn('id="tObs"', text)
         self.assertIn('id="tcObs"', text)
 
+    def test_claw_walk_setting_route(self):
+        code, _ = self._req("/api/lidar/settings", {"claw_walk": "wiggle"})
+        self.assertEqual(code, 400)
+        code, body = self._req("/api/lidar/settings", {"claw_walk": "open_close"})
+        self.assertEqual(code, 200)
+        self.assertEqual(json.loads(body)["claw_walk"], "open_close")
+        self._req("/api/lidar/settings", {"claw_walk": "keep"})
+        self.assertIn('id="cWalk"', self._req("/")[1].decode())
+
     def test_move_sim_box(self):
         code, _ = self._req("/api/lidar/sim", {"x": 100, "y": 0})
         self.assertEqual(code, 400)                                 # too close: outside the allowed range
@@ -576,6 +585,24 @@ class ClawTests(unittest.TestCase):
         used = set(sg.CLAW_PINS.values()) | set(sg.TAIL_PINS) | {sg.TAIL_CLAW_PIN}
         self.assertEqual(len(used), 7)                  # no pin used twice
         self.assertFalse(leg_ids & used)
+
+    def test_claws_open_and_close_while_walking(self):
+        p = params(cycles=3)
+        w = wl.LidarWalker(wl.SimSource(wl.Mount(), box_x=5000.0),
+                           wl.Settings(stop_mm=427, warn_mm=677, avoid=False, claw_start="keep",
+                                       claw_end="keep", claw_obstacle="keep", claw_walk="open_close"),
+                           bus_factory=sg.DryRunBus)
+        bus = sg.DryRunBus()
+        w._stop.clear()
+        w._set(state="running", stage="", cycle=0, tick=0, message="")
+        w._run(p, wg.build_gait(p), bus, None)
+        self.assertEqual(w.state, "done", w.message)
+        claw_pins = set(sg.CLAW_PINS.values())
+        seen = [pulse for (pin, pulse, _ms) in bus.commands if pin in claw_pins]
+        def pose(name):
+            return [sg.pulse_us(sg.claw_angles(name)[s]) for s in ("right", "left")]
+        # cycle 1 closes, cycle 2 opens, cycle 3 closes
+        self.assertEqual(seen, pose("closed") + pose("open") + pose("closed"))
 
     def test_claw_button_moves_claws_when_idle(self):
         w = wl.LidarWalker(wl.SimSource(wl.Mount()), wl.Settings(stop_mm=427, warn_mm=677), bus_factory=sg.DryRunBus)
