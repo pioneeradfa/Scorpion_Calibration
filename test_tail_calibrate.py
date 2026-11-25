@@ -2,7 +2,10 @@ import io
 import json
 import os
 import tempfile
+import threading
 import unittest
+import urllib.error
+import urllib.request
 from contextlib import redirect_stdout
 
 import scorpion_gait as sg
@@ -201,6 +204,104 @@ class OutputTests(Fixture):
     def test_main_rejects_bad_move_time(self):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(tc.main(["--move-ms", "10"]), 2)
+
+
+class WebTests(Fixture):
+    def setUp(self):
+        super().setUp()
+        self.server = tc.make_server(self.cal, "127.0.0.1", 0)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.base = "http://127.0.0.1:%d" % self.server.server_address[1]
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        super().tearDown()
+
+    def req(self, path, body=None):
+        data = None if body is None else (body if isinstance(body, bytes) else json.dumps(body).encode())
+        request = urllib.request.Request(self.base + path, data=data,
+                                         method="GET" if body is None else "POST",
+                                         headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(request, timeout=5) as resp:
+                return resp.status, resp.read().decode("utf-8")
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read().decode("utf-8")
+
+    def test_page_has_a_slider_for_each_motor_and_the_claw(self):
+        code, text = self.req("/")
+        self.assertEqual(code, 200)
+        for label in ("Pin 21 (base)", "Pin 20 (yaw)", "Pin 7 (fold)", "Pin 8 (fold)", "Tail claw"):
+            self.assertIn(label, text)
+        self.assertIn('"range"', text)
+        self.assertIn("/api/motor", text)
+
+    def test_motor_slider_moves_only_that_motor(self):
+        code, text = self.req("/api/motor", {"motor": "20", "angle": 110})
+        self.assertEqual(code, 200)
+        data = json.loads(text)
+        self.assertEqual(data["state"]["motors"], [90, 110, 60, 60])
+        self.assertEqual(data["message"], "pin 20 (yaw) -> 110")
+        self.assertEqual([c[0] for c in self.bus.commands[-4:]], [21, 20, 7, 8])
+
+    def test_claw_slider(self):
+        code, text = self.req("/api/motor", {"motor": "claw", "angle": 45})
+        self.assertEqual(code, 200)
+        self.assertEqual(json.loads(text)["state"]["claw"], 45)
+        self.assertEqual(self.bus.commands[-1][0], sg.TAIL_CLAW_PIN)
+
+    def test_out_of_range_and_bad_motor_are_400_and_nothing_moves(self):
+        before = len(self.bus.commands)
+        code, text = self.req("/api/motor", {"motor": "20", "angle": 300})
+        self.assertEqual(code, 400)
+        self.assertIn("0 to 180", json.loads(text)["error"])
+        code, _ = self.req("/api/motor", {"motor": "9", "angle": 10})
+        self.assertEqual(code, 400)
+        self.assertEqual(len(self.bus.commands), before)
+        self.assertEqual(self.cal.current, [90, 90, 60, 60])
+
+    def test_bad_json_and_non_object_are_400(self):
+        self.assertEqual(self.req("/api/motor", b"{not json")[0], 400)
+        self.assertEqual(self.req("/api/motor", [1, 2])[0], 400)
+
+    def test_unknown_routes_are_404(self):
+        self.assertEqual(self.req("/nope")[0], 404)
+        self.assertEqual(self.req("/api/nope", {})[0], 404)
+
+    def test_save_then_pose_round_trip_over_http(self):
+        self.req("/api/motor", {"motor": "8", "angle": 100})
+        code, _ = self.req("/api/save", {"name": "down"})
+        self.assertEqual(code, 200)
+        self.req("/api/motor", {"motor": "8", "angle": 60})
+        code, text = self.req("/api/pose", {"name": "down"})
+        self.assertEqual(code, 200)
+        self.assertEqual(json.loads(text)["state"]["motors"], [90, 90, 60, 100])
+        self.assertEqual(self.req("/api/pose", {"name": "missing"})[0], 400)
+
+    def test_time_and_claw_saves(self):
+        code, text = self.req("/api/time", {"ms": 900})
+        self.assertEqual(json.loads(text)["state"]["move_ms"], 900)
+        self.assertEqual(self.req("/api/time", {"ms": 50})[0], 400)
+        self.req("/api/claw", {"name": "45"})
+        self.assertEqual(self.req("/api/claw_save", {"name": "half"})[0], 200)
+        self.assertEqual(self.req("/api/claw", {"name": "grip"})[0], 200)
+        code, text = self.req("/api/claw", {"name": "half"})   # saved claw poses are sent as their angle
+        self.assertEqual(code, 400)                             # 'half' is a name, not an angle
+        code, text = self.req("/api/state")
+        self.assertEqual(json.loads(text)["claw_poses"], {"half": 45})
+
+    def test_state_list_and_write(self):
+        code, text = self.req("/api/state")
+        self.assertEqual(code, 200)
+        self.assertEqual(json.loads(text)["motors"], [90, 90, 60, 60])
+        self.req("/api/save", {"name": "web_test"})
+        code, text = self.req("/api/list")
+        self.assertIn('"web_test"', json.loads(text)["text"])
+        code, text = self.req("/api/write", {})
+        self.assertEqual(code, 200)
+        with open(self.out) as fh:
+            self.assertEqual(json.load(fh)["poses"], {"web_test": [90, 90, 60, 60]})
 
 
 class LegsFirstTests(unittest.TestCase):
