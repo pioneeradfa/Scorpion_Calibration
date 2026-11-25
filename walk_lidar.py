@@ -369,8 +369,8 @@ CLAW_MOVE_MS = 400                                   # time the claw servos take
 TAIL_CHOICES = ("keep", "neutral", "raised", "curl", "strike", "down")   # walk-routine choices
 TAIL_BUTTONS = ("neutral", "raised", "curl", "strike", "down", "wave")   # wave is a button only
 TAIL_MOVE_MS = 600                                   # time the tail servos take to move
-TAIL_CLAW_CHOICES = ("keep", "open", "closed")      # walk-routine choices for the tail claw
-TAIL_CLAW_BUTTONS = ("open", "closed")              # buttons for the tail claw
+TAIL_CLAW_CHOICES = ("keep", "open", "closed", "grip")   # walk-routine choices for the tail claw
+TAIL_CLAW_BUTTONS = ("open", "closed", "grip", "snap")   # buttons for the tail claw (snap = open, grip, close)
 
 
 def clearer_side(points, stop_mm, prefer="auto"):
@@ -709,11 +709,13 @@ LIDAR_CARD = r"""
   <div class="row">
     <div><button class="ghost" data-tail-claw="open">Open</button></div>
     <div><button class="ghost" data-tail-claw="closed">Close</button></div>
+    <div><button class="ghost" data-tail-claw="grip">Grip</button></div>
+    <div><button class="ghost" data-tail-claw="snap">Snap</button></div>
   </div>
   <div class="row" style="margin-top:10px">
-    <div><label for="tcStart">Claw at walk start</label><select id="tcStart"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option></select></div>
-    <div><label for="tcEnd">Claw at walk end</label><select id="tcEnd"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option></select></div>
-    <div><label for="tcObs">Claw when an obstacle stops the walk</label><select id="tcObs"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option></select></div>
+    <div><label for="tcStart">Claw at walk start</label><select id="tcStart"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option><option value="grip">grip</option></select></div>
+    <div><label for="tcEnd">Claw at walk end</label><select id="tcEnd"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option><option value="grip">grip</option></select></div>
+    <div><label for="tcObs">Claw when an obstacle stops the walk</label><select id="tcObs"><option value="keep">keep</option><option value="open">open</option><option value="closed">close</option><option value="grip">grip</option></select></div>
   </div>
   <div class="hint" id="clawMsg"></div>
 </div>
@@ -732,7 +734,7 @@ LIDAR_CARD = r"""
     <div><label for="tEnd">Motors at walk end</label><select id="tEnd"><option value="keep">keep</option><option value="neutral">neutral</option><option value="raised">raised</option><option value="curl">curl</option><option value="strike">strike</option><option value="down">down</option></select></div>
     <div><label for="tObs">Motors when an obstacle stops the walk</label><select id="tObs"><option value="keep">keep</option><option value="neutral">neutral</option><option value="raised">raised</option><option value="curl">curl</option><option value="strike">strike</option><option value="down">down</option></select></div>
   </div>
-  <div class="hint">Four tail motors: 20 turns the tail left and right; 21 (base, between the body), 7 and 8 fold it forward and backward. The tail claw is on pin 6. None of these move the legs. The tail claw's open and closed angles are provisional until checked on the robot. Buttons ask for confirmation first.</div>
+  <div class="hint">Four tail motors: 20 turns the tail left and right; 21 (base, between the body), 7 and 8 fold it forward and backward. The tail claw is on pin 6. None of these move the legs. The tail claw's open, closed and grip angles are provisional until checked on the robot. Buttons ask for confirmation first.</div>
   <div class="hint" id="tailMsg"></div>
 </div>
 """
@@ -988,7 +990,7 @@ def tail_action(pose):
 def tail_claw_action(pose):
     """Moves the tail claw now (the buttons). Refused while a walk is running."""
     if pose not in TAIL_CLAW_BUTTONS:
-        raise wg.ParamError("tail claw pose must be open or closed")
+        raise wg.ParamError("tail claw pose must be open, closed, grip or snap")
     walker = STATE["walker"]
     if walker.busy:
         raise wg.ParamError("a walk is running: stop it first")
@@ -996,8 +998,13 @@ def tail_claw_action(pose):
         bus = walker._bus_factory()
     except ImportError as exc:
         raise wg.ParamError(str(exc))
-    bus.send_tail_claw(sg.TAIL_CLAW_POSES[pose], TAIL_MOVE_MS)
-    time.sleep(TAIL_MOVE_MS / 1000.0)
+    if pose == "snap":                       # the legacy claw snap: open, grip, close
+        for name, ms in (("open", 150), ("grip", 120), ("closed", TAIL_MOVE_MS)):
+            bus.send_tail_claw(sg.TAIL_CLAW_POSES[name], ms)
+            time.sleep(ms / 1000.0)
+    else:
+        bus.send_tail_claw(sg.TAIL_CLAW_POSES[pose], TAIL_MOVE_MS)
+        time.sleep(TAIL_MOVE_MS / 1000.0)
     return {"pose": pose}
 
 

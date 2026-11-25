@@ -132,10 +132,10 @@ TAIL_POSES = {
 }
 # The wave (legacy tail_wave): these two frames alternate, 300 ms each, three times, then neutral.
 TAIL_WAVE_FRAMES = ([70, 110, 130, 150], [110, 110, 130, 150])
-# Tail claw: one servo on pin 6, at the end of the tail. PROVISIONAL open/closed raw angles, copied from the
-# right hand claw; check on the robot.
+# Tail claw: one servo on pin 6, at the end of the tail. PROVISIONAL open, closed and grip raw angles, copied
+# from the right hand claw; check on the robot.
 TAIL_CLAW_PIN = 6
-TAIL_CLAW_POSES = {"open": 90, "closed": 30}
+TAIL_CLAW_POSES = {"open": 90, "closed": 30, "grip": 20}
 
 # Coxa-axis mount in the body frame (skills 2.2), mm
 MOUNT = {

@@ -446,9 +446,9 @@ class PageAndRouteTests(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertEqual(json.loads(body)["tail_end"], "down")
         self._req("/api/lidar/settings", {"tail_end": "neutral"})
-        code, _ = self._req("/api/tail_claw", {"pose": "grip"})
+        code, _ = self._req("/api/tail_claw", {"pose": "wave"})
         self.assertEqual(code, 400)
-        code, _ = self._req("/api/lidar/settings", {"tail_claw_end": "grip"})
+        code, _ = self._req("/api/lidar/settings", {"tail_claw_end": "wave"})
         self.assertEqual(code, 400)
         code, body = self._req("/api/lidar/settings", {"tail_claw_end": "open"})
         self.assertEqual(code, 200)
@@ -661,8 +661,8 @@ class TailTests(unittest.TestCase):
 
     def test_tail_claw_button_and_settings(self):
         with self.assertRaises(wg.ParamError):
-            wl.tail_claw_action("grip")
-        self.assertEqual(wl.Settings(stop_mm=427, warn_mm=677, tail_claw_end="grip").tail_claw_end, "keep")
+            wl.tail_claw_action("wave")
+        self.assertEqual(wl.Settings(stop_mm=427, warn_mm=677, tail_claw_end="wave").tail_claw_end, "keep")
         w = wl.LidarWalker(wl.SimSource(wl.Mount()), wl.Settings(stop_mm=427, warn_mm=677), bus_factory=sg.DryRunBus)
         saved = wl.STATE.get("walker")
         wl.STATE["walker"] = w
@@ -670,6 +670,22 @@ class TailTests(unittest.TestCase):
             self.assertEqual(wl.tail_claw_action("open"), {"pose": "open"})
         finally:
             wl.STATE["walker"] = saved
+
+    def test_tail_claw_grip_and_snap(self):
+        from unittest import mock
+        bus = sg.DryRunBus()
+        w = wl.LidarWalker(wl.SimSource(wl.Mount()), wl.Settings(), bus_factory=lambda: bus)
+        saved = wl.STATE.get("walker")
+        wl.STATE["walker"] = w
+        try:
+            with mock.patch.object(wl.time, "sleep"):
+                self.assertEqual(wl.tail_claw_action("grip"), {"pose": "grip"})
+                self.assertEqual(wl.tail_claw_action("snap"), {"pose": "snap"})
+        finally:
+            wl.STATE["walker"] = saved
+        claw = [pulse for (pin, pulse, _ms) in bus.commands if pin == sg.TAIL_CLAW_PIN]
+        grip, opened, closed = (sg.pulse_us(sg.TAIL_CLAW_POSES[k]) for k in ("grip", "open", "closed"))
+        self.assertEqual(claw, [grip, opened, grip, closed])   # grip, then snap = open, grip, close
 
     def test_tail_button_refuses_unknown_pose(self):
         with self.assertRaises(wg.ParamError):
